@@ -1,0 +1,44 @@
+diff --git a/packages/todo/tool-todo/src/index.ts b/packages/todo/tool-todo/src/index.ts
+index e92af70313..1c8b5065e6 100644
+--- a/packages/todo/tool-todo/src/index.ts
++++ b/packages/todo/tool-todo/src/index.ts
+@@ -25,6 +25,15 @@ export const inject = ['tools']
+ /** The valid {@link TodoItem} statuses, as a runtime set for input narrowing. */
+ const STATUSES = ['pending', 'in_progress', 'completed'] as const
+ 
++/**
++ * The nested alternative's session event, named as a literal rather than through
++ * its type. `@deepseek-ai/dsh-tool-todo-tree` declaration-merges `todo/tree` into
++ * `SessionEventMap`, and this package must not depend on the alternative it
++ * excludes, so the name cannot be imported. Kept in step by the mutual-exclusion
++ * tests in both packages.
++ */
++const TREE_EVENT = 'todo/tree'
++
+ /** Model-facing todo tool configuration. */
+ export interface Config {
+   /**
+@@ -210,7 +219,22 @@ export function apply(ctx: Context, config: Config): void {
+         // session) has nowhere to write it. Reject rather than silently no-op.
+         throw new Error('todo_write requires an owning agent session')
+       }
+-      exec.agent.session.append('todo/write', { todos })
++      const session = exec.agent.session
++      // The mirror of `dsh-tool-todo-tree`'s check, and it has to live here too:
++      // that package refuses a SCOPED mount, but this one mounted scoped over a
++      // global tree shadows it and would append here without any tree-side code
++      // running. A log carrying both shapes leaves consumers with no way to tell
++      // which is authoritative, so refuse instead of writing the second shape.
++      //
++      // Compared as a widened string because `todo/tree` is declaration-merged
++      // into `SessionEventMap` by the tree package, so it is absent from this
++      // package's view of the map — this package must not depend on the
++      // alternative it excludes. A log that holds the event at all means that
++      // package IS loaded, which is the composition being rejected.
++      if (session.events.some(event => (event.type as string) === TREE_EVENT)) {
++        throw new Error('session already carries a nested todo/tree; a deployment must mount exactly one todo tool')
++      }
++      session.append('todo/write', { todos })
+       const count = (status: TodoItem['status']): number => todos.filter(t => t.status === status).length
+       return Promise.resolve({
+         todos: todos.map(todo => ({ content: todo.content, status: todo.status })),

@@ -1,0 +1,12 @@
+diff --git a/tsconfig.host.json b/tsconfig.host.json
+index 459036247a..60af7239c8 100644
+--- a/tsconfig.host.json
++++ b/tsconfig.host.json
+@@ -270,6 +270,7 @@
+     { "path": "./packages/workflow/tool-workflow" },
+     { "path": "./packages/workflow/tool-ralph" },
+     { "path": "./packages/todo/tool-todo" },
++    { "path": "./packages/todo/tool-todo-tree" },
+     { "path": "./packages/plan/plan-mode" },
+     { "path": "./packages/preset/agent-presets" },
+     { "path": "./packages/preset/persona" },

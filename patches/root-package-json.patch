@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index 1fd63bae9a..6e8fe31323 100644
+--- a/package.json
++++ b/package.json
+@@ -144,6 +144,7 @@
+   "devDependencies": {
+     "@agentclientprotocol/sdk": "0.25.1",
+     "@deepseek-ai/dsh-tool-session-query": "workspace:^",
++    "@deepseek-ai/dsh-tool-todo-tree": "workspace:^",
+     "@stylistic/eslint-plugin": "^5.10.0",
+     "@testing-library/dom": "^10.4.1",
+     "@testing-library/react": "^16.3.2",

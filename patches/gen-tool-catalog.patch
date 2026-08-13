@@ -1,0 +1,31 @@
+diff --git a/scripts/gen-tool-catalog.ts b/scripts/gen-tool-catalog.ts
+index 005eb4aef9..448eed3d86 100644
+--- a/scripts/gen-tool-catalog.ts
++++ b/scripts/gen-tool-catalog.ts
+@@ -58,6 +58,7 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
+ import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
+ import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+ import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
++import * as ToolTodoTree from '@deepseek-ai/dsh-tool-todo-tree'
+ import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
+ import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
+ import VmWorkflowEngine from '@deepseek-ai/dsh-workflow-worker-thread'
+@@ -518,6 +519,18 @@ const TOOL_PACKAGES: ToolPackage[] = [
+     note:
+       'todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task.',
+   },
++  {
++    pkg: '@deepseek-ai/dsh-tool-todo-tree',
++    dir: 'tool-todo-tree',
++    source: 'packages/todo/tool-todo-tree/src/index.ts',
++    requires: ['ctx.tools', 'owning Agent session', 'an unscoped context'],
++    writes: ['tool/call', 'todo/tree', 'tool/result'],
++    async mount(ctx) {
++      await ctx.plugin(ToolTodoTree)
++    },
++    note:
++      'The nested ALTERNATIVE to `@deepseek-ai/dsh-tool-todo`: both register `todo_write`, so a deployment mounts exactly one. Nesting is a literal expansion to `SCHEMA_DEPTH` (3) levels because the schema DSL has no recursion; `maxDepth` narrows what the tool accepts. Each call appends a whole-tree `todo/tree` snapshot (last-write-wins), and the tool refuses a scoped mount so shadowing cannot mix `todo/tree` and `todo/write` in one session log.',
++  },
+   {
+     pkg: '@deepseek-ai/dsh-tool-workflow',
+     dir: 'tool-workflow',
