@@ -1,5 +1,5 @@
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
-index 1490a0f9f7..1a89a0f00a 100644
+index 1490a0f9f7..ab71a26f1d 100644
 --- a/pnpm-lock.yaml
 +++ b/pnpm-lock.yaml
 @@ -21,6 +21,9 @@ importers:
@@ -12,7 +12,7 @@ index 1490a0f9f7..1a89a0f00a 100644
        '@stylistic/eslint-plugin':
          specifier: ^5.10.0
          version: 5.10.0(eslint@10.5.0(jiti@2.7.0))
-@@ -7821,6 +7824,49 @@ importers:
+@@ -7821,6 +7824,61 @@ importers:
          specifier: workspace:^
          version: link:../../interaction/user-questions
  
@@ -21,6 +21,9 @@ index 1490a0f9f7..1a89a0f00a 100644
 +      '@deepseek-ai/schemastery':
 +        specifier: link:../../../vendor/schemastery
 +        version: link:../../../vendor/schemastery
++      zod:
++        specifier: ^4.4.3
++        version: 4.4.3
 +    devDependencies:
 +      '@deepseek-ai/cordis':
 +        specifier: workspace:^
@@ -37,6 +40,9 @@ index 1490a0f9f7..1a89a0f00a 100644
 +      '@deepseek-ai/dsh-agent-loop-testkit':
 +        specifier: workspace:^
 +        version: link:../../test-support/agent-loop-testkit
++      '@deepseek-ai/dsh-host-apiproxy':
++        specifier: workspace:^
++        version: link:../../host/apiproxy
 +      '@deepseek-ai/dsh-invariants':
 +        specifier: workspace:^
 +        version: link:../../runtime-diagnostics/invariants
@@ -49,6 +55,9 @@ index 1490a0f9f7..1a89a0f00a 100644
 +      '@deepseek-ai/dsh-session':
 +        specifier: workspace:^
 +        version: link:../../core/session
++      '@deepseek-ai/dsh-session-projection':
++        specifier: workspace:^
++        version: link:../../session/session-projection
 +      '@deepseek-ai/dsh-system-prompt':
 +        specifier: workspace:^
 +        version: link:../../core/system-prompt
@@ -58,6 +67,9 @@ index 1490a0f9f7..1a89a0f00a 100644
 +      '@deepseek-ai/dsh-tools':
 +        specifier: workspace:^
 +        version: link:../../core/tools
++      '@deepseek-ai/dsh-user-questions':
++        specifier: workspace:^
++        version: link:../../interaction/user-questions
 +
    packages/typert/generator:
      dependencies:

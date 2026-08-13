@@ -32,7 +32,9 @@ The `./invariant` companion validates DURABLE snapshots independently of the too
 
 ## Rendering
 
-The canonical result is `{ todos, counts: { pending, inProgress, completed } }` where `counts` totals every node at any depth; its Native renderer returns the compact update acknowledgement. The tool also writes the full `todo/tree` session event. No shipped renderer consumes that event yet: a host that wants a durable tree view subscribes to the event stream and renders it itself. The browser client's per-call `TodoRow` is the one shipped surface that does reflect a tree, because it is keyed by the tool NAME this package shares with the flat tool and reads the call args rather than the event; it counts through `children` with an explicit stack (the args it reads are unvalidated, so a recursive walk would overflow the render stack), so its one-line summary totals every node.
+The canonical result is `{ todos, counts: { pending, inProgress, completed } }` where `counts` totals every node at any depth; its Native renderer returns the compact update acknowledgement. The tool also writes the full `todo/tree` session event and, when the session-projection seam is composed, publishes the standing tree on the `todoTree` projection key (last-write-wins, cleared by the next `turn/start`).
+
+Two browser surfaces consume those. The per-call `TodoRow` is keyed by the tool NAME this package shares with the flat tool and reads the call args, counting through `children` with an explicit stack — the args it reads are unvalidated, so a recursive walk would overflow the render stack — so its one-line summary totals every node. The `TodoPanel` plan strip reads the projection: it accepts either plan shape and indents each row by its depth, so a flat deployment renders exactly as before and a tree deployment shows the hierarchy.
 
 ## Export shape
 
@@ -73,4 +75,5 @@ Append-only; newly visible content follows the reusable request prefix and does 
 - **Single-owner scope only** — the tree belongs to the one calling agent session; subagent/shared/swarm scopes are a deliberate cut, and a non-agent caller is rejected.
 - **Nesting is capped at three levels** — the schema DSL cannot express recursion, so the advertised shape is a fixed literal expansion; deeper plans must group at the third level.
 - **Whole-tree replacement is the only operation** — no partial updates, no read-back tool; the model must resend the entire tree each call.
-- **Flat-UI deployments see nothing** — UIs render `todo/tree` events only if they implement the tree renderer; the flat `todo/write` renderers ignore this event by design.
+- **Depth is flattened, not collapsible** — the plan strip indents rows by depth but has no per-node fold, so a wide tree relies on the strip's own scrolling.
+- **Non-browser surfaces render nothing** — the projection and the browser row/strip are the shipped consumers; another host wanting a durable tree view subscribes to `todo/tree` and renders it itself.

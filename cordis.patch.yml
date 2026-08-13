@@ -1,0 +1,16 @@
+# dsh-tool-todo-tree bundle patch: mount the nested todo tool and disable the
+# flat one. Both register the tool name `todo_write`, so the registry rejects
+# whichever mounts second and its entry's fiber settles FAILED —
+# `assertEntriesActivated` audits that state and fails the boot. Selecting a
+# shape is therefore a composition decision, not a mount-order accident, so this
+# patch disables the flat entry in the same layer that inserts the nested one.
+
+# The flat tool ships in the base bundle under this id.
+- id: tool-todo
+  disabled: true
+
+- insert:
+    - id: tool-todo-tree
+      name: '@deepseek-ai/dsh-tool-todo-tree'
+      config:
+        maxDepth: 3

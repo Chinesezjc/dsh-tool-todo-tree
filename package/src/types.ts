@@ -35,3 +35,20 @@ declare module '@deepseek-ai/dsh-session/types' {
     'todo/tree': { todos: TodoTreeItem[] }
   }
 }
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionMap {
+    /**
+     * The agent's current whole todo tree (the latest `todo/tree` snapshot),
+     * or `null` before the first write. Whole-value rule: every `todo/tree`
+     * carries the complete replacement tree, so the fold is last-wins.
+     *
+     * A key of its own rather than the flat tool's `todos`: the two payload
+     * types differ (`children` is absent from `TodoItem`), and a deployment
+     * mounting the flat tool must not have its `todos` consumers handed a
+     * nested value they cannot render. Exactly one of the two keys exists in
+     * any composition, because exactly one todo tool mounts.
+     */
+    todoTree: TodoTreeItem[] | null
+  }
+}

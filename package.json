@@ -1,0 +1,20 @@
+{
+  "name": "dsh-tool-todo-tree",
+  "description": "Nested (tree-shaped) todo_write tool plugin for DeepSeek Harness (DSH): the mutually-exclusive alternative to the flat dsh-tool-todo",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "package",
+    "patches",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ]
+}

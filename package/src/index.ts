@@ -13,9 +13,14 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { z as zod } from 'zod'
+import type { ZodType } from 'zod'
 import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectValueSchemaSpec } from '@deepseek-ai/dsh-tools'
+// The `todoTree` projection-key declaration lives in src/types.ts (its one home);
+// this import edge is what merges it into the projection map.
+import type {} from '@deepseek-ai/dsh-session-projection'
 import type { TodoTreeItem } from './types.ts'
 
 export type { TodoTreeItem } from './types.ts'
@@ -194,6 +199,37 @@ function countStatus(todos: TodoTreeItem[], status: TodoTreeItem['status']): num
 }
 
 /**
+ * Wire payload schema of the `todoTree` projection (whole tree or
+ * pre-first-write null). Recursive through `z.lazy` so the node schema can name
+ * itself: the projection travels the wire, so unlike the model-facing parameter
+ * schema (which has no $ref and is spelled out to {@link SCHEMA_DEPTH}) this one
+ * validates arbitrary depth and needs no literal expansion.
+ *
+ * The annotation widens `children` to include `undefined` because zod's
+ * `.optional()` output carries the key with an `undefined` value, which
+ * `exactOptionalPropertyTypes` distinguishes from {@link TodoTreeItem}'s absent
+ * field. Parsed values still satisfy `TodoTreeItem`: canonical snapshots omit
+ * the field entirely, and the projection only ever folds tool-written trees.
+ */
+interface TreeNodeParsed {
+  content: string
+  status: TodoTreeItem['status']
+  children?: TreeNodeParsed[] | undefined
+}
+
+const treeNodeSchema: ZodType<TreeNodeParsed> = zod.lazy(() => zod.object({
+  content: zod.string(),
+  status: zod.union([zod.literal('pending'), zod.literal('in_progress'), zod.literal('completed')]),
+  children: zod.array(treeNodeSchema).optional(),
+}))
+
+/** Whole-tree projection payload: the standing tree, or null before the first write. */
+const todoTreeProjectionSchema: ZodType<TodoTreeItem[] | null> = zod.union([
+  zod.array(treeNodeSchema),
+  zod.null(),
+]) as ZodType<TodoTreeItem[] | null>
+
+/**
  * Register the tree-shaped `todo_write` tool on `ctx.tools`.
  *
  * Refuses a scoped context. Shape selection between this package and
@@ -223,6 +259,25 @@ export function apply(ctx: Context, config: Config): void {
     // model contract from enforcement. Fail at load, not at first call.
     throw new Error(`tool-todo-tree: maxDepth must be an integer between 1 and ${SCHEMA_DEPTH}`)
   }
+  // The unit child activates only when a projection registry is composed
+  // (headless assemblies without the seam stay unaffected). Standing-plan fold:
+  // latest whole todo/tree snapshot, cleared by the next turn/start (turn/end
+  // keeps the finished tree visible); null before the first write or after a
+  // later turn begins; every other event returns the same state reference.
+  ctx.inject(['sessionProjections'], (projectionCtx) => {
+    projectionCtx.sessionProjections.register<'todoTree', TodoTreeItem[] | null>({
+      key: 'todoTree',
+      schema: todoTreeProjectionSchema,
+      init: () => null,
+      apply: (state, event) => {
+        if (event.type === 'todo/tree') return event.data.todos
+        if (event.type === 'turn/start') return null
+        return state
+      },
+      view: state => state,
+      stateVersion: 1,
+    })
+  })
   ctx.tools.register(defineTool({
     name: 'todo_write',
     description: DESCRIPTION,

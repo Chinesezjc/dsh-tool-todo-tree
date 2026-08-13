@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # Layout: this plugin is not independently buildable — it compiles against
+      # the DSH monorepo's internal packages (core/tools, core/scope,
+      # core/session, session-projection, and the client packages its patches
+      # touch). CI therefore assembles the plugin INTO a checkout of DSH and runs
+      # that tree's own gates. The public mirror is used so no token is needed.
+      - name: Checkout DeepSeek Harness
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          path: dsh
+
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Assemble the plugin into the harness tree
+        working-directory: dsh
+        run: |
+          mkdir -p packages/todo/tool-todo-tree
+          cp -R ../plugin/package/. packages/todo/tool-todo-tree/
+          for patch in ../plugin/patches/*.patch; do
+            echo "applying $(basename "$patch")"
+            git apply "$patch"
+          done
+
+      - name: Install dependencies
+        working-directory: dsh
+        run: pnpm install
+
+      # `gen-tool-catalog` imports the plugin through the root devDependency the
+      # patches add, and pnpm links that to the package's `exports` -> lib, so the
+      # host libs must exist before the generators run.
+      - name: Build host libs
+        working-directory: dsh
+        run: pnpm run build:lib:host
+
+      # Registers `todo/tree` in KNOWN_SESSION_EVENT_TYPES. Without it the
+      # persistence read path refuses any log carrying the event, so this is a
+      # correctness step, not a docs step.
+      - name: Regenerate the persistence catalog
+        working-directory: dsh
+        run: pnpm run gen-persistence-catalog
+
+      # Adding a tool makes docs/tool-catalog.* stale, and no patch carries the
+      # regenerated output — the catalog is a generated artifact of whatever set
+      # of tools is composed, so it is produced here rather than committed. This
+      # mirrors step 3 of the README's assembly procedure.
+      - name: Regenerate the tool catalog
+        working-directory: dsh
+        run: pnpm run gen-tool-catalog
+
+      - name: Typecheck
+        working-directory: dsh
+        run: pnpm run typecheck
+
+      - name: Lint
+        working-directory: dsh
+        run: pnpm run lint
+
+      # The plugin's own suites, the two client packages its patches change, and
+      # the tool-catalog generator guarantee that counts both todo_write
+      # registrations. The full harness suite is the harness repo's own gate.
+      - name: Test
+        working-directory: dsh
+        run: >
+          pnpm vitest run
+          packages/todo
+          packages/client/ui-tool
+          packages/client/ui-conversation
+          packages/core/tools/tests/gen-tool-catalog.spec.ts
+
+      # The harness gates coverage per file at 100% on packages/*/*/src, and
+      # `test` alone does not measure it: a contribution reachable only through
+      # a composed seam can be entirely untested while every suite stays green
+      # (the `todoTree` projection registration was exactly that — 90.76% lines,
+      # uncovered block 268-277, with all suites passing). Scoped to this
+      # package's own src so the job gates exactly what this repo ships.
+      - name: Coverage gate for the plugin's own sources
+        working-directory: dsh
+        run: >
+          pnpm vitest run packages/todo/tool-todo-tree
+          --coverage
+          --coverage.include='packages/todo/tool-todo-tree/src/**'
+
+      # Re-runs the generator in --check mode against the output produced above:
+      # a difference here means generation is not deterministic, since the
+      # regenerate step ran on this same tree.
+      - name: Verify the generated tool catalog is fresh
+        working-directory: dsh
+        run: pnpm run verify-tool-catalog
