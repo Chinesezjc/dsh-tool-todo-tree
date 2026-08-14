@@ -146,7 +146,7 @@ index ad627e7cad..cbef8c6ef1 100644
  
  /**
 diff --git a/packages/client/ui-conversation/tests/todo-panel.client.spec.tsx b/packages/client/ui-conversation/tests/todo-panel.client.spec.tsx
-index fafe6e6dc4..6311c417ae 100644
+index fafe6e6dc4..8db42352bf 100644
 --- a/packages/client/ui-conversation/tests/todo-panel.client.spec.tsx
 +++ b/packages/client/ui-conversation/tests/todo-panel.client.spec.tsx
 @@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -157,7 +157,7 @@ index fafe6e6dc4..6311c417ae 100644
  import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
  import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
  import type { TodoDockProps } from '../src/client/skeleton/TodoPanel.tsx'
-@@ -102,18 +103,82 @@ describe('TodoPanel', () => {
+@@ -102,18 +103,96 @@ describe('TodoPanel', () => {
      expect(screen.getByText('1 已完成')).toBeTruthy()
      expect(screen.queryByText(/进行中|待处理/)).toBeNull()
    })
@@ -235,6 +235,20 @@ index fafe6e6dc4..6311c417ae 100644
 +): TodoDockProps {
 +  const useProjection = (requested: string, selector?: (v: unknown) => unknown) =>
 +    bindSnapshotSelector(store)(s => (selector ?? (v => v))(requested === key ? s.value : undefined))
++  return { useProjection, t } as unknown as TodoDockProps
++}
++
++/**
++ * Dock props stub answering BOTH plan keys from one store, which the per-key
++ * stub above cannot express. Exactly one todo tool mounts, so a live host never
++ * carries both keys; the adapter still coalesces them, and which one wins
++ * decides what a mixed log renders during replay.
++ */
++function dualDockProps(
++  store: ReturnType<typeof createSnapshotStore<{ flat: PlanValue; tree: PlanValue }>>,
++): TodoDockProps {
++  const useProjection = (requested: string, selector?: (v: unknown) => unknown) =>
++    bindSnapshotSelector(store)(s => (selector ?? (v => v))(requested === 'todos' ? s.flat : s.tree))
    return { useProjection, t } as unknown as TodoDockProps
  }
  
@@ -245,7 +259,7 @@ index fafe6e6dc4..6311c417ae 100644
      render(<TodoDock {...dockProps(store)} />)
      // Capability absent (no baseline/frame yet) renders nothing.
      expect(screen.queryByTestId('todo-panel')).toBeNull()
-@@ -124,6 +189,22 @@ describe('TodoDock', () => {
+@@ -124,6 +203,42 @@ describe('TodoDock', () => {
      expect(screen.queryByTestId('todo-panel')).toBeNull()
    })
  
@@ -263,6 +277,26 @@ index fafe6e6dc4..6311c417ae 100644
 +    expect(screen.getByText('1 已完成 · 1 进行中')).toBeTruthy()
 +    fireEvent.click(screen.getByRole('button'))
 +    expect(screen.getAllByRole('listitem').map(row => row.dataset.depth)).toEqual(['0', '1'])
++  })
++
++  it('prefers the flat plan and falls through to the tree only when it is null', () => {
++    // `todos ?? todoTree`: a standing flat plan wins, so a nested plan reaches
++    // the strip only once the flat key holds no plan. This is what keeps a
++    // deployment on the flat tool from rendering nested rows its consumers
++    // cannot draw, and it is invisible to the per-key stub above.
++    const TREE = [
++      { content: '根', status: 'in_progress' as const, children: [{ content: '子', status: 'completed' as const }] },
++    ]
++    const store = createSnapshotStore<{ flat: PlanValue; tree: PlanValue }>({ flat: LIST, tree: TREE })
++    render(<TodoDock {...dualDockProps(store)} />)
++    fireEvent.click(screen.getByRole('button'))
++    // The flat plan renders: every row sits at depth 0, and '子' is absent.
++    expect(screen.getAllByRole('listitem').map(row => row.dataset.depth)).toEqual(['0', '0', '0'])
++    expect(screen.queryByText('子')).toBeNull()
++    // Retiring the flat plan lets the nested one through, children included.
++    act(() => { store.set({ flat: null, tree: TREE }) })
++    expect(screen.getAllByRole('listitem').map(row => row.dataset.depth)).toEqual(['0', '1'])
++    expect(screen.getByText('子')).toBeTruthy()
 +  })
 +
    it('registers before the goal and queue entries', () => {

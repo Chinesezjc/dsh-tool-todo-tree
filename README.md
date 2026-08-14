@@ -104,6 +104,7 @@ interconnect 那类插件是纯 host 插件，可以整包独立存在。本插�
   - 整段删掉 `ctx.inject(['sessionProjections'], …)` 注册 → 7 个用例中 6 个转红；断言「未组合时没有该键」的那个仍绿，符合其语义。
   - 删掉 fold 里的 `todo/tree` 分支 → 3 个依赖 last-wins 的用例转红。
   - 把 `withTreeTool=false` 的 harness 改成始终挂载 → 「未组合时无该键」与 HMR 卸载两个用例转红。
+  - 把 `TodoDock` 的 `todos ?? todoTree` 翻成 `todoTree ?? todos` → 只有新增的「优先扁平计划」用例转红（1 红 / 13 绿）。
 - 覆盖率的双向对照：移除 `tests/projection.spec.ts` 后，`src/index.ts` 掉到语句 87.67% / 分支 89.74% / 函数 64.28% / 行 90.76%，未覆盖行恰为 projection 注册块 `268-277`，四项均触发主仓 per-file 100% 门禁报错；加回后回到 100%。即该 spec 缺失会让 `test:coverage` 直接失败。
 - 生成产物的双向对照：在已装配的树上把四份 catalog 全部 `git checkout` 回提交态（等于 CI 的 fresh clone），`verify-tool-catalog`、`verify-persistence-catalog`、`verify-config-catalog`、`verify-doc-graphs` **四道全部报 stale**；依次跑四个生成器后四道全过，且再跑一遍生成器输出 byte-identical（确定性）。本插件让后两者变脏的原因是它向 `docs/config-catalog.*` 增加 `Config.maxDepth` 一节、并因 emit `todo/tree` 与监听 `internal/dispatch` 而进入事件生产/消费图。
 
@@ -126,7 +127,9 @@ interconnect 那类插件是纯 host 插件，可以整包独立存在。本插�
 
 - **计划条只缩进、不可折叠**：按深度缩进各行，但没有按节点折叠，较宽的树依赖计划条自身滚动。
 - **非浏览器界面不渲染**：已交付消费方是 `todoTree` projection 与浏览器端的行／计划条；其他 host 需自行订阅 `todo/tree`。
-- **Web 快照门禁未在有沙箱的机器上验证**：本机跑 `DSH_SNAPSHOT=replay pnpm run test:web` 的失败与干净 master 完全一致（缺沙箱后端），因此只能证明「未引入新失败」，不能证明可见输出无变化。合入主仓前应在具备沙箱的环境复跑，必要时用 `DSH_SNAPSHOT=refresh` 确认预期内的输出变化。
+- **Web 快照门禁看不到本插件的 client 改动**（不只是"未验证"，是结构性无效）：主仓唯一的装配级 todo 快照 `apps/web/tests/todo-row.snapshot.ts` 走的 fixture（`packages/client/connection/src/client/fixture.ts:493-500,597`）只写 **`todo/write`** 这一个扁平事件、且 projection 只把它折进 `todos` 键，因此 `todoTree` 在该 harness 里从不存在，嵌套渲染路径一行都不执行。实测双向对照：把两个 client 包的 `lib/client.js` 分别构建成**打了补丁**与**未打补丁**两个版本，`DSH_SNAPSHOT=replay` 跑该快照**两次都通过、输出完全相同**——即它无法区分本插件是否装配。要真正覆盖需要给 fixture 增加一条 `todo/tree` 事件（连带 projection 折叠），本仓未做。
+  - 附带教训：跑该快照前必须先 `pnpm --filter <client 包> bundle`。它加载的是 `lib/client.js` 而非源码，源码打了补丁但 bundle 是旧的时会得到**假绿**（本机实测遇到过：源码 mtime 比 bundle 新且 bundle 里搜不到 `dsw-todo-depth`/`todoTree`）。
+  - 补偿措施：`TodoDock` 的两键优先级（`todos ?? todoTree`）改由包级 spec 的「优先扁平计划」用例覆盖——它是装配级快照照不到、而 `ui-conversation/src/client/*` 又整目录免除覆盖率门禁的那段行为。
 
 ## 许可
 
