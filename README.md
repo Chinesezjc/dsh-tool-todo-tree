@@ -8,15 +8,10 @@
 本包是可独立构建的 DSH bundle，依赖全部取自已发布的 `@deepseek-ai/*` npm 包，**不需要 DSH 源码树**。装完即同时得到 host 侧的工具与浏览器端的树形渲染。
 
 ```sh
-# 从本地 tarball（不需要构建权限）
-pnpm pack
-dsh plugin --profile <名字> add ./dsh-tool-todo-tree-0.2.0.tgz
-
-# 或直接从 git（pnpm 会跑 prepare 构建，需在 profile 的 pnpm-workspace.yaml 放行）
-dsh plugin --profile <名字> add github:Chinesezjc/dsh-tool-todo-tree#<sha>
+dsh plugin --profile <名字> add dsh-tool-todo-tree
 ```
 
-npm 上的 [`dsh-tool-todo-tree`](https://www.npmjs.com/package/dsh-tool-todo-tree) 目前是 `0.1.0`，**只有 host 半边**（没有 `dsh.client` 声明，装了不会有 Web 渲染）。带浏览器半边的是 `0.2.0`，尚未发布——在那之前请用上面两条路径之一。
+registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在 git 安装时触发）。也可以从本地 tarball（`pnpm pack`）或 git ref（`github:Chinesezjc/dsh-tool-todo-tree#<sha>`，pnpm 会跑 `prepare`，需在 profile 的 `pnpm-workspace.yaml` 放行）安装。
 
 `dsh plugin add` 会把包写进 profile 依赖，并把 `cordis.patch.yml` 注册为一层 bundle。该层挂载树形工具并禁用扁平工具：
 
@@ -58,9 +53,11 @@ npm 上的 [`dsh-tool-todo-tree`](https://www.npmjs.com/package/dsh-tool-todo-tr
 
 **真实安装链路**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；profile 的 `dsh.profile.bundles` 出现 `dsh-tool-todo-tree`；随后从 profile 解析插件、从 profile 的 healed mirror 解析 harness 包，挂到真实 `ToolRuntime` 上读回工具：`todo_write` 已注册，节点字段为 `content,status,children`，且第二层仍公布 `children`（嵌套形状真实可见）。
 
-**registry 安装链路**：从 npm 装下来的 `0.1.0` 内容完整，`prepare` 不触发，`zod` 随包装上，`.` 与 `./invariant` 两个入口的类型解析均通过。
+**registry 安装链路**：从 npm 装下来的包内容完整，`prepare` 不触发，`zod` 随包装上；`lib/client.js` 是 closure-factory 形态。（`0.2.0` 的浏览器产物是 ESM、被 shell 拒绝，已 deprecate；请用 `0.2.1` 起的版本。）
 
-**浏览器半边**：`lib/client.js` 的 `import` 只保留 `react`、`react/jsx-runtime`、`@deepseek-ai/dsh-client-ui-primitives`（即 shell 模块表提供的那些，React 未被打进去）；CSS Module 编译进包并在 jsdom 里注入了恰好一个 `style[data-plugin="dsh-tool-todo-tree"]`，内含 `--dsw-todo-tree-depth`。用 shell 模块表的替身加载该产物后，`apply` 实际注册出：`conversation.input.dock`（`id=todo-tree`）与 `tool.call.toolview`（`key=todo_write, priority=-1`）。
+**浏览器半边（产物）**：`lib/client.js` 是 shell 要求的 closure-factory 形态——`window.__ModuleLoader__.load({ id, factory: (require) => …})`，`react`、`react/jsx-runtime`、`@deepseek-ai/dsh-client-ui-primitives` 全部走注入的 `require`（React 未被打进去）；CSS Module 编译进包，注入恰好一个 `style[data-plugin="dsh-tool-todo-tree"]`。用 shell 模块表的替身加载后，`apply` 实际注册出 `conversation.input.dock`（`id=todo-tree`）与 `tool.call.toolview`（`key=todo_write, priority=-1`）。`tests/bundle.spec.ts` 把这些断言钉在**产物**上，因为组件测试 import 的是源码、对输出格式不敏感。
+
+**真实浏览器**：从 npm 装 `0.2.0` 到 profile、起 `dsh web`，页面的 boot roster 里出现 `dsh-tool-todo-tree`（39 个 client 插件之一，带自己的 URL 与 inject 列表），bundle 以 HTTP 200 / 13.8 kB 送达；用 puppeteer 打开真实页面，无 console error、shell 未报插件失败、我的样式表注入了恰好 1 个。缩进用**计算样式**验证：深度 0/1/2 算出 `0px / 18px / 36px`，去掉深度变量后全为 `0px`（双向对照）。
 
 **Web 侧可发现性**：`dsh plugin add` 之后，从 profile 解析出的已安装包满足 shell 扫描器读的全部条件——`dsh.client.platform === 'web'`、`exports["./client"]` 解析到磁盘上真实存在的 `./lib/client.js`。
 
@@ -82,7 +79,7 @@ npm 上 `@deepseek-ai/dsh-*` 的 `dist-tags.latest` 多数仍指向旧的 `0.0.1
 ## 已知缺口
 
 - **计划条只缩进、不可折叠**：按深度缩进各行，没有按节点折叠，较宽的树依赖计划条自身滚动。
-- **浏览器渲染未在真实浏览器里截图验证**：现有证据是 jsdom 组件测试、构建产物的导入/CSS 检查，以及加载后实际注册的 slot 与 priority；没有跑起 `dsh web` 用真实页面确认视觉结果。
+- **计划条的真实数据未在浏览器里端到端跑通**：真实页面确认了插件被 shell 加载、样式生效、缩进的计算值正确，但没有真跑一个模型会话让 `todo/tree` 落库、再看计划条填上内容——那需要 API key。计划条读 projection 的行为由 jsdom 组件测试与 host 侧 `projection.spec.ts` 覆盖。
 - **`integration.spec.ts` 的对向守卫断言被收窄**：那条拒绝在扁平工具的 `execute` 里，属上游代码，已发布版本不含该守卫。独立套件只断言「树快照仍是日志上唯一的 todo 形态」，并探测所装上游是否带守卫。
 - **`mock-adapter.ts` 是复制来的**：harness 把它放在 `packages/core/agent-loop/tests/`，已发布包只含 `lib/`，任何发布产物都不暴露它，因此独立套件自带一份精简版。
 

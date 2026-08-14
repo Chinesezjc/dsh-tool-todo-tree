@@ -80,6 +80,9 @@ for (const browserOnly of [
   'src/css-modules.d.ts',
   'tests/client.spec.tsx',
   'tests/empty-style.ts',
+  // Asserts the contract of THIS repo's built `lib/client.js`. The harness never
+  // builds the browser half, so that artifact does not exist in-tree.
+  'tests/bundle.spec.ts',
 ]) {
   await rm(join(target, browserOnly), { force: true })
 }

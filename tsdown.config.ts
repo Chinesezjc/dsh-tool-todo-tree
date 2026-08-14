@@ -26,6 +26,9 @@ import { basename, dirname, resolve } from 'node:path'
 import { defineConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
+/** Plugin id: the loader handoff key and the style-tag marker. Must equal the package name the shell rosters. */
+const PLUGIN_ID = 'dsh-tool-todo-tree'
+
 /** Packages the harness or the web shell provides at runtime. */
 const PROVIDED = [/^@deepseek-ai\//, /^react(\/|$)/, /^react-dom(\/|$)/]
 
@@ -64,7 +67,7 @@ function cssModules() {
       )
       // Idempotent by tag id: a re-import (HMR, a second entry) must not stack
       // duplicate style tags.
-      return `const id = 'dsh-tool-todo-tree'
+      return `const id = ${JSON.stringify(PLUGIN_ID)}
 if (typeof document !== 'undefined' && !document.querySelector('style[data-plugin="' + id + '"]')) {
   const tag = document.createElement('style')
   tag.setAttribute('data-plugin', id)
@@ -91,17 +94,30 @@ export default defineConfig([
     clean: true,
   },
   {
-    entry: ['src/client.tsx'],
+    // The web shell fetches this bundle OUTSIDE its own module graph and requires
+    // a closure-factory artifact: the file calls `__ModuleLoader__.load` with a
+    // factory that resolves every external through the injected `require` (the
+    // loader's module table). A plain ESM output is rejected at boot with
+    // "loaded without registering ... via __ModuleLoader__.load", so the format
+    // is CJS wrapped by the banner/intro/footer below.
+    entry: { client: 'src/client.tsx' },
     outDir: 'lib',
-    format: 'esm',
-    outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
+    format: 'cjs',
     platform: 'browser',
     target: 'es2022',
-    dts: true,
+    // Types come from the host face's `tsc`; emitting them here would wrap the
+    // banner into the declaration and break parsing.
+    dts: false,
     deps: { neverBundle: PROVIDED },
     plugins: [cssModules()],
     sourcemap: false,
     // The host config owns `clean`; clearing again would delete its output.
     clean: false,
+    outputOptions: {
+      entryFileNames: 'client.js',
+      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(PLUGIN_ID)}, factory: (require) => {`,
+      footer: 'return module.exports; } });',
+      intro: 'var module = { exports: {} }; var exports = module.exports;',
+    },
   },
 ])
