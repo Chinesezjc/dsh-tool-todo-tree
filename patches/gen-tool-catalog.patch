@@ -21,7 +21,7 @@ index 005eb4aef9..448eed3d86 100644
 +    requires: ['ctx.tools', 'owning Agent session', 'an unscoped context'],
 +    writes: ['tool/call', 'todo/tree', 'tool/result'],
 +    async mount(ctx) {
-+      await ctx.plugin(ToolTodoTree)
++      await ctx.plugin(ToolTodoTree, { allowParallelInProgress: true })
 +    },
 +    note:
 +      'The nested ALTERNATIVE to `@deepseek-ai/dsh-tool-todo`: both register `todo_write`, so a deployment mounts exactly one. Nesting is a literal expansion to `SCHEMA_DEPTH` (3) levels because the schema DSL has no recursion; `maxDepth` narrows what the tool accepts. Each call appends a whole-tree `todo/tree` snapshot (last-write-wins), and the tool refuses a scoped mount so shadowing cannot mix `todo/tree` and `todo/write` in one session log.',
