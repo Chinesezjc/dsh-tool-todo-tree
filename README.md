@@ -89,7 +89,7 @@ interconnect 那类插件是纯 host 插件，可以整包独立存在。本插�
 
 - **CI 在 GitHub runner 上全绿**：workflow 在一份 DSH 公开镜像的 fresh clone 里装配本插件，然后跑 install、`build:lib:host`、四个生成器、typecheck、lint、测试、覆盖率门禁，最后用四道 `verify-*` 门禁确认生成产物新鲜且生成是确定性的。
 
-- 把本仓按上面步骤 1–3 装配进一份**干净 clone**：9 个补丁全部 `git apply` 成功，`pnpm install`、`build:lib:host`、四个生成器均成功；`pnpm run typecheck` 与 `pnpm run lint` 退出 0；`packages/todo` + `packages/client/ui-tool` + `packages/client/ui-conversation` + `gen-tool-catalog.spec.ts` 共 **780/780** 通过；四道 `verify-*` catalog 门禁全部通过。
+- 把本仓按上面步骤 1–3 装配进一份**干净 clone**：9 个补丁全部 `git apply` 成功，`pnpm install`、`build:lib:host`、四个生成器均成功；`pnpm run typecheck` 与 `pnpm run lint` 退出 0；`packages/todo` + `packages/client/ui-tool` + `packages/client/ui-conversation` + `gen-tool-catalog.spec.ts` 共 **781/781** 通过；四道 `verify-*` catalog 门禁全部通过。
 - 插件包自身 5 个测试文件、81 个用例：注册表／不变式单测、真实 agent-loop 集成、`todoTree` projection、以及经真实 Loader 引导 cordis.yml 的 `loader-composition`（证明 `maxDepth` 是真配置项而非常量）。
 - 本包 `src/**` 在主仓的 per-file 100% 覆盖率门禁下达标：语句 154/154、分支 104/104、函数 27/27、行 131/131。
 - 在完整工作副本上另外跑过：`pnpm run test:gui` 272 文件 / 3765 用例全通过；`pnpm run doc-sync` 28 道门禁全绿；`pnpm run build` 退出 0。
