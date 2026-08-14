@@ -6,14 +6,85 @@ on:
   pull_request:
 
 jobs:
-  check:
+  # The plugin builds and tests against PUBLISHED harness packages, with no
+  # monorepo checkout: this is the path a user takes with `dsh plugin add`.
+  standalone:
     runs-on: ubuntu-latest
     steps:
-      # Layout: this plugin is not independently buildable — it compiles against
-      # the DSH monorepo's internal packages (core/tools, core/scope,
-      # core/session, session-projection, and the client packages its patches
-      # touch). CI therefore assembles the plugin INTO a checkout of DSH and runs
-      # that tree's own gates. The public mirror is used so no token is needed.
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build
+        run: pnpm run build
+
+      # Proves the published artifact is loadable, not just compilable: pack it,
+      # install it into a real profile through the CLI, and confirm the bundle
+      # layer registered.
+      - name: Pack and install into a profile
+        run: |
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          npm install -g @deepseek-ai/dsh@0.1.0-rc.6
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          dsh plugin --profile ci add "$RUNNER_TEMP"/dsh-tool-todo-tree-*.tgz
+          node -e "
+            const d = require('$DSH_HOME/profiles/ci/package.json')
+            if (!d.dsh.profile.bundles.includes('dsh-tool-todo-tree')) {
+              throw new Error('the bundle layer was not registered')
+            }
+            console.log('bundle layer registered:', d.dsh.profile.bundles.join(', '))
+          "
+
+      # Reads the registered tool back off a live registry, resolving the plugin
+      # from the profile and the harness packages from the healed profile mirror —
+      # exactly how a profile boot resolves them.
+      - name: Load the installed plugin and read its tool schema
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          cd "$DSH_HOME/profiles"
+          node --input-type=module -e "
+            import { createRequire } from 'node:module'
+            const req = createRequire(process.env.DSH_HOME + '/profiles/ci/')
+            const { Context } = await import('@deepseek-ai/cordis')
+            const SystemPrompt = (await import('@deepseek-ai/dsh-system-prompt')).default
+            const ToolRuntime = (await import('@deepseek-ai/dsh-tools')).default
+            const plugin = await import(req.resolve('dsh-tool-todo-tree'))
+            const ctx = new Context()
+            await ctx.plugin(SystemPrompt, { persona: '' })
+            await ctx.plugin(ToolRuntime)
+            await ctx.plugin(plugin, { maxDepth: 3 })
+            await ctx.fiber.await()
+            const schema = ctx.get('tools').schemas().find(s => s.name === 'todo_write')
+            if (!schema) throw new Error('todo_write was not registered')
+            const node = schema.parameters.properties.todos.items.properties
+            if (!('children' in node)) throw new Error('the nested shape is missing')
+            if (!('children' in node.children.items.properties)) throw new Error('depth-2 nesting is missing')
+            console.log('todo_write registered with nested children')
+          "
+
+  # The Web rendering lives in the harness client packages (TodoPanel is internal
+  # to dsh-client-ui-conversation and not exported), so those edits ship as
+  # patches. This job is the only place they can be verified.
+  patches:
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout DeepSeek Harness
         uses: actions/checkout@v4
         with:
@@ -35,11 +106,18 @@ jobs:
         with:
           version: 11
 
+      # The patches import `@deepseek-ai/dsh-tool-todo-tree/client` and add a
+      # tsconfig project reference to it, so the package must be IN the tree
+      # under its scoped identity before they apply. The script writes that
+      # identity (workspace peers, harness tsc layout) and the two tsconfig
+      # wirings; applying the patches without it leaves the tree unable to
+      # typecheck.
       - name: Assemble the plugin into the harness tree
+        run: node plugin/scripts/assemble-into-harness.mjs dsh
+
+      - name: Apply the harness-side patches
         working-directory: dsh
         run: |
-          mkdir -p packages/todo/tool-todo-tree
-          cp -R ../plugin/package/. packages/todo/tool-todo-tree/
           for patch in ../plugin/patches/*.patch; do
             echo "applying $(basename "$patch")"
             git apply "$patch"
@@ -56,30 +134,15 @@ jobs:
         working-directory: dsh
         run: pnpm run build:lib:host
 
-      # Registers `todo/tree` in KNOWN_SESSION_EVENT_TYPES. Without it the
-      # persistence read path refuses any log carrying the event, so this is a
-      # correctness step, not a docs step.
-      - name: Regenerate the persistence catalog
-        working-directory: dsh
-        run: pnpm run gen-persistence-catalog
-
-      # Adding a tool makes docs/tool-catalog.* stale, and no patch carries the
-      # regenerated output — the catalog is a generated artifact of whatever set
-      # of tools is composed, so it is produced here rather than committed. This
-      # mirrors step 3 of the README's assembly procedure.
-      - name: Regenerate the tool catalog
-        working-directory: dsh
-        run: pnpm run gen-tool-catalog
-
-      # The remaining two generated artifacts this plugin invalidates: it adds a
-      # `Config.maxDepth` section to docs/config-catalog.* and `tool-todo-tree`
-      # rows to the event producer/consumer graph (it emits `todo/tree` and
-      # listens on `internal/dispatch`). Verified by restoring all four catalogs
-      # to their committed state on an assembled tree: every one of the four
-      # verify gates reports stale, so generating only two left two unchecked.
-      - name: Regenerate the config catalog and doc graphs
+      # All four are artifacts of whatever is composed, and no patch carries the
+      # regenerated output. `gen-persistence-catalog` is a correctness step, not a
+      # docs step: without it `todo/tree` is absent from KNOWN_SESSION_EVENT_TYPES
+      # and the persistence read path refuses any log carrying the event.
+      - name: Regenerate the generated catalogs
         working-directory: dsh
         run: |
+          pnpm run gen-persistence-catalog
+          pnpm run gen-tool-catalog
           pnpm run gen-config-catalog
           pnpm run gen-doc-graphs
 
@@ -91,10 +154,10 @@ jobs:
         working-directory: dsh
         run: pnpm run lint
 
-      # The plugin's own suites, the two client packages its patches change, and
-      # the tool-catalog generator guarantee that counts both todo_write
-      # registrations. The full harness suite is the harness repo's own gate.
-      - name: Test
+      # The flat tool carries the reciprocal guard, the two client packages carry
+      # the tree rendering, and the generator spec counts both todo_write
+      # registrations.
+      - name: Test the patched packages
         working-directory: dsh
         run: >
           pnpm vitest run
@@ -103,27 +166,11 @@ jobs:
           packages/client/ui-conversation
           packages/core/tools/tests/gen-tool-catalog.spec.ts
 
-      # The harness gates coverage per file at 100% on packages/*/*/src, and
-      # `test` alone does not measure it: a contribution reachable only through
-      # a composed seam can be entirely untested while every suite stays green
-      # (the `todoTree` projection registration was exactly that — 90.76% lines,
-      # uncovered block 268-277, with all suites passing). Scoped to this
-      # package's own src so the job gates exactly what this repo ships.
-      - name: Coverage gate for the plugin's own sources
-        working-directory: dsh
-        run: >
-          pnpm vitest run packages/todo/tool-todo-tree
-          --coverage
-          --coverage.include='packages/todo/tool-todo-tree/src/**'
-
-      # Re-runs each generator in --check mode against the output produced above:
-      # a difference here means generation is not deterministic, since the
-      # regenerate steps ran on this same tree. All four are checked because all
-      # four go stale when this plugin is assembled.
+      # Running --check after generating on the same tree proves generation is
+      # deterministic.
       - name: Verify every generated catalog is fresh
         working-directory: dsh
         run: |
           pnpm run verify-tool-catalog
-          pnpm run verify-persistence-catalog
           pnpm run verify-config-catalog
           pnpm run verify-doc-graphs

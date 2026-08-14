@@ -9,8 +9,11 @@
 - id: tool-todo
   disabled: true
 
+# The row names THIS package, so Node resolution finds it through the profile's
+# node_modules. It is the unscoped published name, not the `@deepseek-ai/dsh-*`
+# name the same source carries inside the harness monorepo.
 - insert:
     - id: tool-todo-tree
-      name: '@deepseek-ai/dsh-tool-todo-tree'
+      name: dsh-tool-todo-tree
       config:
         maxDepth: 3

@@ -26,22 +26,13 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import UserQuestionService from '@deepseek-ai/dsh-user-questions'
-import type { RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api/rpc'
-import { RpcId } from '@deepseek-ai/dsh-host-apiproxy/api/rpc'
-import { createApiProxy } from '@deepseek-ai/dsh-host-apiproxy'
 import * as ToolTodoTree from '@deepseek-ai/dsh-tool-todo-tree'
 import type { TodoTreeItem } from '@deepseek-ai/dsh-tool-todo-tree/types'
-
-let nextRpc = 1
-function request<P>(payload: P): RpcRequest<P> {
-  return { rpcId: RpcId(`todo-tree-proj-${String(nextRpc++)}`), payload }
-}
 
 interface Bench {
   ctx: Context
   session: Session
-  tailProjections(): Promise<{ asOfSeq: number; values: Record<string, unknown> } | undefined>
+  tailProjections(): { asOfSeq: number; values: Record<string, unknown> }
 }
 
 async function harness(withTreeTool: boolean): Promise<Bench> {
@@ -49,20 +40,21 @@ async function harness(withTreeTool: boolean): Promise<Bench> {
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { persona: '' })
   await ctx.plugin(ToolRuntime)
-  await ctx.plugin(UserQuestionService)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SessionProjectionRegistry)
   if (withTreeTool) await ctx.plugin(ToolTodoTree)
   const session = ctx.sessions.create()
   ctx.agents.register({ id: session.id, session, status: 'idle', ctx } as Agent)
-  const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
   return {
     ctx,
     session,
-    async tailProjections() {
-      const response = await api.sessions.history(request({ sessionId: session.id }))
-      if (!response.result.ok) throw new Error('history failed')
-      return response.result.value.projections
+    // Read straight off the registry: `snapshot` is the same
+    // `{ asOfSeq, values }` the history RPC relays, and the BFF that relays it
+    // is not installable from the registry (its own dependency
+    // `@deepseek-ai/dsh-user-interaction` is unpublished), so the carrier is
+    // out of scope for this package's standalone suite.
+    tailProjections() {
+      return ctx.sessionProjections.snapshot(session)
     },
   }
 }
@@ -84,7 +76,7 @@ describe('todoTree projection provider', () => {
   it('serves null before the first todo/tree', async () => {
     const bench = await harness(true)
     seedMessage(bench.session)
-    const projections = await bench.tailProjections()
+    const projections = bench.tailProjections()
     expect(projections?.values.todoTree).toBeNull()
     expect(projections?.asOfSeq).toBe(bench.session.seq - 1)
   })
@@ -107,7 +99,7 @@ describe('todoTree projection provider', () => {
     ]
     session.append('todo/tree', { todos: first })
     session.append('todo/tree', { todos: second })
-    const projections = await bench.tailProjections()
+    const projections = bench.tailProjections()
     // Last-wins: the latest snapshot, whole and still nested.
     expect(projections?.values.todoTree).toEqual(second)
     expect(projections?.asOfSeq).toBe(session.seq - 1)
@@ -130,7 +122,7 @@ describe('todoTree projection provider', () => {
       }],
     }]
     session.append('todo/tree', { todos: deep })
-    expect((await bench.tailProjections())?.values.todoTree).toEqual(deep)
+    expect((bench.tailProjections())?.values.todoTree).toEqual(deep)
   })
 
   it('clears the standing tree on the next turn/start (turn/end keeps it)', async () => {
@@ -144,9 +136,9 @@ describe('todoTree projection provider', () => {
     }]
     session.append('todo/tree', { todos: tree })
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
-    expect((await bench.tailProjections())?.values.todoTree).toEqual(tree)
+    expect((bench.tailProjections())?.values.todoTree).toEqual(tree)
     session.append('turn/start', { turn: 2 })
-    const cleared = await bench.tailProjections()
+    const cleared = bench.tailProjections()
     expect(cleared?.values.todoTree).toBeNull()
     expect(cleared?.asOfSeq).toBe(session.seq - 1)
   })
@@ -158,7 +150,7 @@ describe('todoTree projection provider', () => {
     const bench = await harness(true)
     seedMessage(bench.session)
     bench.session.append('todo/tree', { todos: [{ content: 'a', status: 'pending' }] })
-    const values = (await bench.tailProjections())?.values ?? {}
+    const values = (bench.tailProjections())?.values ?? {}
     expect('todoTree' in values).toBe(true)
     expect('todos' in values).toBe(false)
   })
@@ -166,7 +158,7 @@ describe('todoTree projection provider', () => {
   it('has no todoTree key when tool-todo-tree is not composed', async () => {
     const bench = await harness(false)
     seedMessage(bench.session)
-    const projections = await bench.tailProjections()
+    const projections = bench.tailProjections()
     expect(projections).toBeDefined()
     expect('todoTree' in (projections?.values ?? {})).toBe(false)
   })
@@ -175,8 +167,8 @@ describe('todoTree projection provider', () => {
     const bench = await harness(false)
     seedMessage(bench.session)
     const fiber = await bench.ctx.plugin(ToolTodoTree)
-    expect((await bench.tailProjections())?.values.todoTree).toBeNull()
+    expect((bench.tailProjections())?.values.todoTree).toBeNull()
     await fiber.dispose()
-    expect('todoTree' in ((await bench.tailProjections())?.values ?? {})).toBe(false)
+    expect('todoTree' in ((bench.tailProjections())?.values ?? {})).toBe(false)
   })
 })

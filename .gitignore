@@ -1,8 +1,8 @@
 # Build output and local dependencies.
 node_modules/
 lib/
-lib/types/
 *.tsbuildinfo
+*.tgz
 
 # OS noise.
 .DS_Store
