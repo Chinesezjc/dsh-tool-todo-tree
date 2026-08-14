@@ -5,10 +5,20 @@
 
 ## 安装
 
-本包是可独立构建的 DSH bundle，依赖全部取自已发布的 `@deepseek-ai/*` npm 包，**不需要 DSH 源码树**。
+本包已发布到 npm：[`dsh-tool-todo-tree`](https://www.npmjs.com/package/dsh-tool-todo-tree)。
+它是可独立构建的 DSH bundle，依赖全部取自已发布的 `@deepseek-ai/*` npm 包，**不需要 DSH 源码树**。
 
 ```sh
-# 从 tarball（无需构建权限）
+# 从 npm
+dsh plugin --profile <名字> add dsh-tool-todo-tree
+```
+
+registry 上的 tarball 自带 `lib/*.js` 与 `.d.ts`，安装时不跑构建（`prepare` 只在 git 安装时触发）。
+
+以下两条路径此前已实测：
+
+```sh
+# 从本地 tarball
 pnpm pack
 dsh plugin --profile <名字> add ./dsh-tool-todo-tree-0.1.0.tgz
 
@@ -67,11 +77,13 @@ pnpm run gen-tool-catalog && pnpm run gen-config-catalog && pnpm run gen-doc-gra
 
 ## 验证
 
-以下均为实跑结果。
+以下均为实跑结果。**CI 在 GitHub runner 上两个 job 全绿**（run [31766546146](https://github.com/Chinesezjc/dsh-tool-todo-tree/actions/runs/31766546146)）：`standalone` 走 npm 安装链路，`patches` 走源码树装配链路。
 
 **独立路径（无 monorepo）**：`pnpm install` 只从 npm 取依赖；`pnpm run typecheck` 退出 0；`pnpm run test` **81/81 通过**；`pnpm run build` 成功（8 个产物，含 `lib/*.js` 与 `.d.ts`）。
 
 **真实安装链路**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；profile 的 `dsh.profile.bundles` 出现 `dsh-tool-todo-tree`；随后从 profile 解析插件、从 profile 的 healed mirror 解析 harness 包，挂到真实 `ToolRuntime` 上读回工具：`todo_write` 已注册，节点字段为 `content,status,children`，且第二层仍公布 `children`（嵌套形状真实可见）。
+
+**registry 安装链路**：0.1.0 已发布到 npm。从 registry 下载的 tarball 与本地构建 shasum 一致（`68829e6a`）；干净目录 `npm install dsh-tool-todo-tree` 成功（`prepare` 不触发，`zod` 随包装上）；运行时导出 `Config,SCHEMA_DEPTH,apply,inject,name`；`.` 与 `./invariant` 两个入口的类型解析均通过。
 
 **补丁路径**：在公开镜像的干净 clone 上，`scripts/assemble-into-harness.mjs` + 6 个补丁全部成功；四个生成器与三个 `verify-*` 全绿；`typecheck`、`lint` 退出 0；`packages/todo` + `ui-tool` + `ui-conversation` + `gen-tool-catalog.spec.ts` 共 **781/781** 通过。本包在主仓 per-file 100% 覆盖率门禁下达标（语句 154/154、分支 104/104、函数 27/27、行 131/131）。
 

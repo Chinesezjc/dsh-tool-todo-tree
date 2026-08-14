@@ -52,20 +52,32 @@ jobs:
             console.log('bundle layer registered:', d.dsh.profile.bundles.join(', '))
           "
 
-      # Reads the registered tool back off a live registry, resolving the plugin
-      # from the profile and the harness packages from the healed profile mirror —
-      # exactly how a profile boot resolves them.
+      # `plugin add` installs only the plugin; the harness packages it imports come
+      # from the profile mirror, which is healed on the first CLI invocation that
+      # prepares the profile. `--dump-config` is that invocation in bounded form:
+      # it composes the tree, prints it, and exits, so it both heals the mirror and
+      # proves this bundle's rows compose.
+      - name: Compose the profile and heal its module mirror
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          dsh --profile ci --dump-config > "$RUNNER_TEMP/dump.txt"
+          grep -q 'tool-todo-tree' "$RUNNER_TEMP/dump.txt"
+          echo "composed rows referencing this bundle: $(grep -c 'tool-todo-tree' "$RUNNER_TEMP/dump.txt")"
+
+      # Reads the registered tool back off a live registry, resolving EVERYTHING
+      # from the profile — the plugin and the harness packages alike — which is
+      # what a profile boot does.
       - name: Load the installed plugin and read its tool schema
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
-          cd "$DSH_HOME/profiles"
           node --input-type=module -e "
             import { createRequire } from 'node:module'
-            const req = createRequire(process.env.DSH_HOME + '/profiles/ci/')
-            const { Context } = await import('@deepseek-ai/cordis')
-            const SystemPrompt = (await import('@deepseek-ai/dsh-system-prompt')).default
-            const ToolRuntime = (await import('@deepseek-ai/dsh-tools')).default
-            const plugin = await import(req.resolve('dsh-tool-todo-tree'))
+            const fromProfile = createRequire(process.env.DSH_HOME + '/profiles/ci/')
+            const load = async name => import(fromProfile.resolve(name))
+            const { Context } = await load('@deepseek-ai/cordis')
+            const SystemPrompt = (await load('@deepseek-ai/dsh-system-prompt')).default
+            const ToolRuntime = (await load('@deepseek-ai/dsh-tools')).default
+            const plugin = await load('dsh-tool-todo-tree')
             const ctx = new Context()
             await ctx.plugin(SystemPrompt, { persona: '' })
             await ctx.plugin(ToolRuntime)
@@ -123,9 +135,12 @@ jobs:
             git apply "$patch"
           done
 
+      # `--no-frozen-lockfile`: assembling a package the harness lockfile does not
+      # know makes it outdated, and CI defaults the frozen check to true. The
+      # lockfile addition is exactly this plugin's own entry.
       - name: Install dependencies
         working-directory: dsh
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       # `gen-tool-catalog` imports the plugin through the root devDependency the
       # patches add, and pnpm links that to the package's `exports` -> lib, so the

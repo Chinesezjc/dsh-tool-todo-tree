@@ -65,7 +65,11 @@ await mkdir(target, { recursive: true })
 for (const entry of ['src', 'tests']) {
   await cp(join(root, entry), join(target, entry), { recursive: true })
 }
-for (const doc of ['README.md', 'README.zh.md', 'README.i18n.yaml']) {
+// Only the English README is carried. The harness gates in-tree documentation
+// bilingually (`verify-translation-pairing`: every non-excluded `**/*.md` needs
+// a `.zh.md` plus an `.i18n.yaml` record), so a tree that runs that gate needs
+// the counterpart authored there — this standalone repo does not keep one.
+for (const doc of ['README.md']) {
   await cp(join(root, doc), join(target, doc))
 }
 
