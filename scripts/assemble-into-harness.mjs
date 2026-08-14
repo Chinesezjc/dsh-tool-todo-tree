@@ -10,12 +10,11 @@
  * - In-tree: scoped `@deepseek-ai/dsh-tool-todo-tree`, peers as `workspace:^`,
  *   built by the harness's own `tsc -b` into `lib/types/`.
  *
- * The Web patches import `@deepseek-ai/dsh-tool-todo-tree/client` and add a
- * tsconfig project reference to it, so applying them WITHOUT this step leaves
- * the harness tree unable to typecheck or lint. This script writes the in-tree
- * identity, adds the two tsconfig wirings the patches expect, and points the
- * integration spec at the harness's own mock adapter (no published artifact
- * exposes it, so the standalone copy vendors one).
+ * `gen-tool-catalog.patch` imports `@deepseek-ai/dsh-tool-todo-tree`, so applying
+ * the patches WITHOUT this step leaves the harness tree unable to typecheck or
+ * lint. This script writes the in-tree identity, adds the tsconfig wirings that
+ * import needs, and points the integration spec at the harness's own mock adapter
+ * (no published artifact exposes it, so the standalone copy vendors one).
  *
  * Usage: node scripts/assemble-into-harness.mjs <path-to-harness-checkout>
  */
@@ -163,7 +162,9 @@ console.log(await wire(
 console.log(await wire(
   'tsconfig.base.json',
   '"@deepseek-ai/dsh-tool-todo/client": ["./packages/todo/tool-todo/src/client.ts"],',
-  '\n      "@deepseek-ai/dsh-tool-todo-tree/types": ["./packages/todo/tool-todo-tree/src/types.ts"],'
-  + '\n      "@deepseek-ai/dsh-tool-todo-tree/client": ["./packages/todo/tool-todo-tree/src/client.ts"],',
+  // Only `./types` is mapped. The browser half is excluded from the harness copy
+  // (see the copy filter above), so a `./client` mapping would name a file this
+  // script never writes; nothing in the assembled tree imports that subpath.
+  '\n      "@deepseek-ai/dsh-tool-todo-tree/types": ["./packages/todo/tool-todo-tree/src/types.ts"],',
 ))
 console.log(`assembled into ${target}`)
