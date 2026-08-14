@@ -65,6 +65,24 @@ await mkdir(target, { recursive: true })
 for (const entry of ['src', 'tests']) {
   await cp(join(root, entry), join(target, entry), { recursive: true })
 }
+// The browser half stays OUT of the harness copy. It is a self-contained client
+// plugin the web shell loads from the installed package, so the harness never
+// builds it; and its client-package type merges reshape Context for the browser,
+// which would drag `api/remotes` and the whole client face into this package's
+// host program (TS6059/TS6307 on files outside its rootDir).
+for (const browserOnly of [
+  'src/client.tsx',
+  'src/TodoTreePanel.tsx',
+  'src/TodoTreeRow.tsx',
+  'src/plan.ts',
+  'src/locales.ts',
+  'src/todo-tree.module.css',
+  'src/css-modules.d.ts',
+  'tests/client.spec.tsx',
+  'tests/empty-style.ts',
+]) {
+  await rm(join(target, browserOnly), { force: true })
+}
 // Only the English README is carried. The harness gates in-tree documentation
 // bilingually (`verify-translation-pairing`: every non-excluded `**/*.md` needs
 // a `.zh.md` plus an `.i18n.yaml` record), so a tree that runs that gate needs

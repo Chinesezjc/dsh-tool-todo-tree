@@ -4,7 +4,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ES2023"
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
     ],
     "strict": true,
     "exactOptionalPropertyTypes": true,
@@ -15,7 +17,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "types": [
-      "node"
+      "react"
     ],
     "paths": {
       "@deepseek-ai/dsh-tool-todo-tree": [
@@ -26,16 +28,21 @@
       ],
       "@deepseek-ai/dsh-tool-todo-tree/types": [
         "./src/types.ts"
+      ],
+      "@deepseek-ai/dsh-tool-todo-tree/client": [
+        "./src/client.tsx"
       ]
-    }
+    },
+    "jsx": "react-jsx"
   },
   "include": [
-    "src/index.ts",
-    "src/invariant.ts",
+    "src/client.tsx",
+    "src/TodoTreePanel.tsx",
+    "src/TodoTreeRow.tsx",
+    "src/plan.ts",
+    "src/locales.ts",
+    "src/css-modules.d.ts",
     "src/types.ts",
-    "tests"
-  ],
-  "exclude": [
     "tests/client.spec.tsx"
   ]
 }

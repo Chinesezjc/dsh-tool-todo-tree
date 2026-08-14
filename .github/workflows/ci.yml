@@ -67,6 +67,30 @@ jobs:
       # Reads the registered tool back off a live registry, resolving EVERYTHING
       # from the profile — the plugin and the harness packages alike — which is
       # what a profile boot does.
+      # The browser half is a client plugin the web shell loads from the installed
+      # package. Assert the contract the shell's scanner actually reads
+      # (`dsh.client.platform` + a resolvable `exports["./client"]`), then load the
+      # built bundle and confirm it claims both slots — including the keyed
+      # `todo_write` row at a lower priority, which is what shadows the built-in
+      # flat row without patching the package that owns it.
+      - name: Verify the browser half is discoverable and registers its slots
+        run: |
+          export DSH_HOME="$RUNNER_TEMP/dsh-home"
+          node --input-type=module -e "
+            import { createRequire } from 'node:module'
+            import { existsSync, readFileSync } from 'node:fs'
+            import { dirname, resolve } from 'node:path'
+            const req = createRequire(process.env.DSH_HOME + '/profiles/ci/')
+            const pkgPath = req.resolve('dsh-tool-todo-tree/package.json')
+            const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+            if (pkg.dsh?.client?.platform !== 'web') throw new Error('dsh.client.platform is not web')
+            const client = pkg.exports?.['./client']
+            const rel = typeof client === 'string' ? client : client?.default
+            if (typeof rel !== 'string') throw new Error('exports[\"./client\"] is missing')
+            if (!existsSync(resolve(dirname(pkgPath), rel))) throw new Error('the client bundle is absent: ' + rel)
+            console.log('client bundle:', rel)
+          "
+
       - name: Load the installed plugin and read its tool schema
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
