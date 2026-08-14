@@ -28,11 +28,12 @@ function agentWithSession(id = 'parent-1'): Agent & { session: Session } {
   return { id: SessionId(id), session } as unknown as Agent & { session: Session }
 }
 
-async function setup(config: tool.Config = {}): Promise<Context> {
+async function setup(config: Partial<tool.Config> = {}): Promise<Context> {
+  const full: tool.Config = { allowParallelInProgress: false, ...config }
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRegistry)
-  await ctx.plugin(tool, config)
+  await ctx.plugin(tool, full)
   return ctx
 }
 
@@ -254,7 +255,7 @@ describe('dsh-tool-todo-tree', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
-    await expect(ctx.plugin(tool, { maxDepth }).then(() => undefined))
+    await expect(ctx.plugin(tool, { maxDepth, allowParallelInProgress: false }).then(() => undefined))
       .rejects.toThrow(/maxDepth must be an integer between 1 and/)
   })
 
@@ -276,7 +277,7 @@ describe('dsh-tool-todo-tree', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
-    const fiber = await ctx.plugin(tool)
+    const fiber = await ctx.plugin(tool, { allowParallelInProgress: false })
     expect(ctx.tools.schemas().some(s => s.name === 'todo_write')).toBe(true)
     await fiber.dispose()
     expect(ctx.tools.schemas().some(s => s.name === 'todo_write')).toBe(false)
@@ -296,7 +297,7 @@ describe('dsh-tool-todo-tree', () => {
       scope = createScope(inner, { id: SessionId('a1') })
     }, { inject: ['tools', 'systemPrompt'] }))
 
-    await expect(scope.ctx.plugin(tool, {}).then(() => undefined))
+    await expect(scope.ctx.plugin(tool, { allowParallelInProgress: false }).then(() => undefined))
       .rejects.toThrow(/must mount on an unscoped context/)
   })
 

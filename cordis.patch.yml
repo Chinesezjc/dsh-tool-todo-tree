@@ -12,8 +12,15 @@
 # The row names THIS package, so Node resolution finds it through the profile's
 # node_modules. It is the unscoped published name, not the `@deepseek-ai/dsh-*`
 # name the same source carries inside the harness monorepo.
+#
+# `allowParallelInProgress` has no default: it is the same required deployment
+# choice the flat tool carries, so swapping the shapes cannot silently change it.
+# `true` matches what the harness base bundle configures for the flat tool, which
+# keeps this bundle a shape change and nothing else. Override it here to restore
+# the single-active discipline.
 - insert:
     - id: tool-todo-tree
       name: dsh-tool-todo-tree
       config:
         maxDepth: 3
+        allowParallelInProgress: true

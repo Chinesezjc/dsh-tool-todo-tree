@@ -1,7 +1,7 @@
 {
   "name": "dsh-tool-todo-tree",
   "description": "Nested (tree-shaped) todo_write tool for DeepSeek Harness: the mutually-exclusive alternative to the flat dsh-tool-todo",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "engines": {

@@ -24,9 +24,30 @@ registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在
       name: dsh-tool-todo-tree
       config:
         maxDepth: 3
+        allowParallelInProgress: true
 ```
 
 必须显式禁用扁平工具。两者注册同名工具，注册表拒绝第二个注册者，其 entry 的 fiber settle 为 `FAILED`，而 `assertEntriesActivated` 审计该状态并让启动失败——选择形态要在组合层做，不能依赖挂载顺序。
+
+### 还要从 agent preset 里删掉扁平工具那一项
+
+上面那层只作用于 **host composition**。agent preset 是**另一份** composition，shipped 的 `standard`、`code`、`cordis` 三个 preset **各自都有一行** `- id: tool-todo`，`minimal` 没有。preset 层的同名工具会**遮蔽** host 层的这一个：工具视图以 global 层为种子，再按 scope 链由远及近覆盖，越近的同名项胜出（`packages/core/tools` 的 `view(scope)`）。
+
+后果是：只装本包、不动 preset 时，`dsh plugin add` 与 `--dump-config` 都显示配置正确，但**会话里模型拿到的仍是扁平工具**——落库事件是 `todo/write` 而不是 `todo/tree`，projection 里出现的是 `todos` 而不是 `todoTree`，工具结果文案是 `Updated todo list:` 而不是 `Update todo tree`。
+
+所以要复制一份 preset 并**删掉整个 `tool-todo` 条目**（连同它的 `config:` 子键，别只删 `- id:` 那行，会留下孤立的 `config:` 让 YAML 失效）：
+
+```sh
+# 以 standard 为基础复制一份，然后从副本里删掉 tool-todo 那一项
+mkdir -p "$DSH_HOME/.agent-presets/<名字>"
+# 编辑 agent.cordis.yml，移除：
+#   - id: tool-todo
+#     name: '@deepseek-ai/dsh-tool-todo'
+#     config:
+#       allowParallelInProgress: true
+```
+
+开 session 时指定该 preset 即可。**不要把 `tool-todo-tree` 加进 preset**：preset 的每一行都在 agent scope 内挂载，而本工具有意拒绝 scoped context（scoped 注册只会遮蔽而非碰撞，dispose 后会静默退回扁平工具，让一个 session 的日志混有两种形状），加进去会让 `session.create` 直接失败。本工具只挂 host 层，靠继承到达 session。
 
 ## 这个包做什么
 
@@ -35,7 +56,8 @@ registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在
 - `todo_write`：整棵任务树的全量替换写入，节点通过 `children` 嵌套
 - 每次调用向所属 agent 的 session 追加一条 `todo/tree` 事件快照，回放为 last-write-wins
 - `todoTree` projection：组合了 session-projection 接缝时发布当前整树，供 UI 读取（由下一个 `turn/start` 清空）
-- 全树范围内最多一个节点 `in_progress`；父节点只有在全部子节点 `completed` 时才可为 `completed`
+- `allowParallelInProgress`（**必填**，无默认）：`true` 允许任意深度多个节点同时 `in_progress`，`false` 则全树只允许一个、多标即拒绝。与扁平工具同名开关语义一致，因此换形状不会悄悄改掉部署已选的并行策略；工具描述也随之切换
+- 父节点只有在全部子节点 `completed` 时才可为 `completed`
 - 同层兄弟节点 `content` 去重；空 `children` 归一化为省略该字段
 - `maxDepth`（默认 3）收窄接受的嵌套深度，上限为协议常量 `SCHEMA_DEPTH`
 
@@ -49,7 +71,7 @@ registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在
 
 以下均为实跑结果。CI 两个 job：`standalone` 走 npm 安装链路，`patches` 走源码树装配链路。
 
-**独立路径（无 monorepo）**：`pnpm install` 只从 npm 取依赖；`pnpm run typecheck`（host 与 client 两个 face）退出 0；`pnpm run test` **100/100 通过**；`pnpm run build` 成功（host 半边 6 个产物 + 浏览器半边 `lib/client.js` 13.8 kB）。
+**独立路径（无 monorepo）**：`pnpm install` 只从 npm 取依赖；`pnpm run typecheck`（host 与 client 两个 face）退出 0；`pnpm run test` **106/106 通过**；`pnpm run build` 成功（host 半边 6 个产物 + 浏览器半边 `lib/client.js` 13.8 kB）。
 
 **真实安装链路**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；profile 的 `dsh.profile.bundles` 出现 `dsh-tool-todo-tree`；随后从 profile 解析插件、从 profile 的 healed mirror 解析 harness 包，挂到真实 `ToolRuntime` 上读回工具：`todo_write` 已注册，节点字段为 `content,status,children`，且第二层仍公布 `children`（嵌套形状真实可见）。
 
@@ -65,10 +87,15 @@ registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在
 
 **负例验证**（断言能失败才算验证）：
 - 短路 `maxDepth` 深度检查 → `loader-composition` 的「maxDepth: 1 拒绝嵌套写入」转红。
+- `allowParallelInProgress` 双向短路：忽略配置写死「永远单一」→ `true` 用例转红；写死「永远并行」→ `false` 用例转红。
 - 删掉 projection 的 fold 分支 → 3 个 last-wins 用例转红；整段删掉 `ctx.inject(['sessionProjections'], …)` → 7 个中 6 个转红。
 - 移除 `tests/projection.spec.ts` → `src/index.ts` 掉到 90.76% 行覆盖，未覆盖行正是 projection 注册块，覆盖率门禁 `exit=1`。
 - 把 `planRows` 改成只遍历顶层 → 8 个用例转红（含计划条缩进、跨深度计数、20 万层嵌套那条）。
 - keyed slot 的 `priority` 语义是在主仓里用探针实测的：同 key 同 priority 第二次注册直接抛错（错误信息本身指出「register at a different priority to shadow it (lowest renders)」），改成 `priority: -1` 后即被接受。
+
+**真实模型会话的端到端实录**（隔离 `DSH_HOME`，真 API key，preset 已删掉扁平工具那一项）：模型一次调用 `todo_write` 写出三父六子的嵌套计划后——落库事件是 `todo/tree`；projection 里出现 `todoTree` 且携带完整嵌套数据，`todos` 键不存在；工具结果文案是 `Update todo tree`。真实浏览器页面里计划条显示 `Todo tree · 1 in progress · 8 pending`，工具行显示 `Update todo tree · 0/9 completed · 调研`（9 = 3 父 + 6 子）。
+
+同一条件下**不改 preset** 的对照组：落库 `todo/write`、projection 里 `todoTree` 为 `null` 而 `todos` 有值、文案 `Updated todo list:`——这就是上面那条 preset 要求的由来。
 
 ## 版本对齐的坑
 
@@ -79,7 +106,7 @@ npm 上 `@deepseek-ai/dsh-*` 的 `dist-tags.latest` 多数仍指向旧的 `0.0.1
 ## 已知缺口
 
 - **计划条只缩进、不可折叠**：按深度缩进各行，没有按节点折叠，较宽的树依赖计划条自身滚动。
-- **计划条的真实数据未在浏览器里端到端跑通**：真实页面确认了插件被 shell 加载、样式生效、缩进的计算值正确，但没有真跑一个模型会话让 `todo/tree` 落库、再看计划条填上内容——那需要 API key。计划条读 projection 的行为由 jsdom 组件测试与 host 侧 `projection.spec.ts` 覆盖。
+- **装上本包还不够，必须同时改 agent preset**：见[上文](#还要从-agent-preset-里删掉扁平工具那一项)。shipped 的三个 preset 都带扁平工具那一项并遮蔽本工具，因此仅 `dsh plugin add` 的部署仍会拿到扁平行为。让 bundle patch 也能作用于 preset 层需要主仓侧的机制改动，本包无法单方面解决。
 - **`integration.spec.ts` 的对向守卫断言被收窄**：那条拒绝在扁平工具的 `execute` 里，属上游代码，已发布版本不含该守卫。独立套件只断言「树快照仍是日志上唯一的 todo 形态」，并探测所装上游是否带守卫。
 - **`mock-adapter.ts` 是复制来的**：harness 把它放在 `packages/core/agent-loop/tests/`，已发布包只含 `lib/`，任何发布产物都不暴露它，因此独立套件自带一份精简版。
 

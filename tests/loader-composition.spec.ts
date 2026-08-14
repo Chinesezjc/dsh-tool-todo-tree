@@ -89,6 +89,13 @@ async function boot(configLines: readonly string[]): Promise<Context> {
   return ctx
 }
 
+/** Two nodes in progress at different depths — the shape the parallel policy decides. */
+const PARALLEL_TREE = [{
+  content: 'run the fan-out',
+  status: 'in_progress',
+  children: [{ content: 'subagent a', status: 'in_progress' }],
+}]
+
 /** A depth-2 tree: one root carrying one child. */
 const DEPTH_2 = [{
   content: 'implement the fix',
@@ -108,7 +115,7 @@ function execute(ctx: Context, owner: Agent, todos: unknown, callId: string) {
 
 describe('tool-todo-tree real Loader composition through cordis.yml', () => {
   it('maxDepth: 1 rejects a nested write while the advertised schema keeps its three levels', async () => {
-    const ctx = await boot(['    maxDepth: 1'])
+    const ctx = await boot(['    maxDepth: 1', '    allowParallelInProgress: false'])
     // The model contract is the fixed SCHEMA_DEPTH expansion regardless of the
     // configured cap, so the schema still describes children two levels down.
     const schema = ctx.tools.schemas().find(s => s.name === 'todo_write')
@@ -125,7 +132,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
   }, 30_000)
 
   it('maxDepth: 3 accepts the same nested write end to end', async () => {
-    const ctx = await boot(['    maxDepth: 3'])
+    const ctx = await boot(['    maxDepth: 3', '    allowParallelInProgress: false'])
     const owner = agent(ctx)
     const result = await execute(ctx, owner, DEPTH_2, 'nested-ok')
     expect(result.isError).toBe(false)
@@ -133,7 +140,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
   }, 30_000)
 
   it('defaults to the schema depth when the config omits maxDepth', async () => {
-    const ctx = await boot([])
+    const ctx = await boot(['    allowParallelInProgress: false'])
     const owner = agent(ctx)
     // Depth 3 is the protocol cap, so it must be accepted with no config at all.
     const depth3 = [{
@@ -150,6 +157,32 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     // Accepting more than the schema advertises would diverge the model contract
     // from enforcement, so the plugin refuses at load. The Loader surfaces that
     // as the boot rejection itself, not as a started-then-broken entry.
-    await expect(boot(['    maxDepth: 4'])).rejects.toThrow('maxDepth must be an integer between 1 and 3')
+    await expect(boot(['    maxDepth: 4', '    allowParallelInProgress: false'])).rejects.toThrow('maxDepth must be an integer between 1 and 3')
+  }, 30_000)
+
+  it('allowParallelInProgress: false rejects several in_progress nodes and narrows the description', async () => {
+    const ctx = await boot(['    allowParallelInProgress: false'])
+    const description = ctx.tools.schemas().find(s => s.name === 'todo_write')?.description ?? ''
+    expect(description).toContain('AT MOST ONE todo `in_progress` across the WHOLE tree')
+    expect(description).not.toContain('several at once')
+
+    const owner = agent(ctx)
+    const result = await execute(ctx, owner, PARALLEL_TREE, 'parallel-denied')
+    expect(result.isError).toBe(true)
+    expect(resultText(result)).toContain('at most one task may be in_progress')
+    expect(owner.session.events.some(e => e.type === 'todo/tree')).toBe(false)
+  }, 30_000)
+
+  it('allowParallelInProgress: true permits in_progress nodes at several depths', async () => {
+    // The flat tool ships the same flag, and a deployment that chose parallel
+    // work must not lose it by swapping in the nested shape.
+    const ctx = await boot(['    allowParallelInProgress: true'])
+    const description = ctx.tools.schemas().find(s => s.name === 'todo_write')?.description ?? ''
+    expect(description).toContain('several at once when work genuinely runs in parallel')
+
+    const owner = agent(ctx)
+    const result = await execute(ctx, owner, PARALLEL_TREE, 'parallel-allowed')
+    expect(result.isError).toBe(false)
+    expect(owner.session.events.findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(PARALLEL_TREE)
   }, 30_000)
 })

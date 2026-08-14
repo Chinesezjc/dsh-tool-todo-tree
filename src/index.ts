@@ -42,26 +42,61 @@ const STATUSES = ['pending', 'in_progress', 'completed'] as const
  */
 export const SCHEMA_DEPTH = 3
 
-/** Plugin config (all optional — `Config` supplies the defaults). */
+/** Plugin config. */
 export interface Config {
   /** Maximum accepted nesting depth (root nodes are depth 1). At most {@link SCHEMA_DEPTH}. */
   maxDepth?: number
+  /**
+   * Required deployment choice for whether several nodes may be `in_progress` at once, ANYWHERE in
+   * the tree. True suits agents that run work concurrently — subagents, background commands,
+   * workflow fan-out — and the description then instructs the model to mark every actively worked
+   * node. False restores the single-active discipline: the description asks for exactly one across
+   * the whole tree, and a call marking more is rejected.
+   *
+   * Mirrors `@deepseek-ai/dsh-tool-todo`'s flag of the same name, so swapping the flat tool for this
+   * one does not silently change the parallel policy a deployment already chose.
+   */
+  allowParallelInProgress: boolean
 }
 
 export const Config: z<Config> = z.object({
   maxDepth: z.number().default(SCHEMA_DEPTH),
+  allowParallelInProgress: z.boolean().required(),
 })
 
-const DESCRIPTION =
+const DESCRIPTION_HEAD =
   'Record and update a structured task tree for the current work. Send the ENTIRE '
   + 'tree every call — it REPLACES the previous tree (there are no partial updates, '
   + 'no per-item edits). Use it to plan multi-step work and show progress: one todo '
-  + 'per concrete step, with `children` breaking a step into sub-steps. Keep AT MOST '
-  + 'ONE todo `in_progress` across the WHOLE tree at a time; while work remains, '
-  + 'exactly one node should be `in_progress`. Mark a todo `completed` the moment it '
+  + 'per concrete step, with `children` breaking a step into sub-steps. '
+
+const DESCRIPTION_PARALLEL =
+  'Mark every node being actively worked on `in_progress` — several at once when '
+  + 'work genuinely runs in parallel (e.g. concurrent subagents or background '
+  + 'commands), at any depth; while work remains, at least one node should be '
+  + '`in_progress`. '
+
+const DESCRIPTION_SINGLE =
+  'Keep AT MOST ONE todo `in_progress` across the WHOLE tree at a time; while work '
+  + 'remains, exactly one node should be `in_progress`. '
+
+const DESCRIPTION_TAIL =
+  'Mark a todo `completed` the moment it '
   + 'is done (do not batch completions); a parent is `completed` only when all its '
   + 'children are. Skip the tree for trivial single-step tasks. Statuses: `pending` '
   + '(not started), `in_progress` (being worked on now), `completed` (finished).'
+
+/**
+ * The model-facing description for one activation. The active-status clause is the only part that
+ * varies, because it is the only instruction the parallel policy changes.
+ * @param allowParallel - whether several nodes may be `in_progress` at once.
+ * @returns the composed tool description.
+ */
+function describe(allowParallel: boolean): string {
+  return DESCRIPTION_HEAD
+    + (allowParallel ? DESCRIPTION_PARALLEL : DESCRIPTION_SINGLE)
+    + DESCRIPTION_TAIL
+}
 
 /** Shared leaf property specs. The compiler's circularity check tracks the
  * current ancestor path only, so reusing these consts across levels is legal;
@@ -142,12 +177,17 @@ interface RawNode {
 /**
  * Validate the value constraints the ParameterSchemaSpec can't express and
  * build the canonical {@link TodoTreeItem}[]: trimmed non-empty content unique
- * within its sibling group, at most one in-progress node across the whole
- * tree, depth at most `maxDepth`, and empty `children` canonicalized to an
- * absent field. The registry has already enforced the status enum and the
- * schema-level depth cap; the cast below records that guarantee.
+ * within its sibling group, depth at most `maxDepth`, empty `children`
+ * canonicalized to an absent field, and — unless the deployment allows parallel
+ * work — at most one in-progress node across the whole tree. The registry has
+ * already enforced the status enum and the schema-level depth cap; the cast
+ * below records that guarantee.
+ * @param raw - the model's nodes, already status- and depth-checked by the registry.
+ * @param maxDepth - the deepest level this deployment accepts.
+ * @param allowParallel - whether several nodes may be `in_progress` at once.
+ * @returns the canonical tree.
  */
-function toTodoTree(raw: RawNode[], maxDepth: number): TodoTreeItem[] {
+function toTodoTree(raw: RawNode[], maxDepth: number, allowParallel: boolean): TodoTreeItem[] {
   let inProgress = 0
   const convert = (nodes: RawNode[], depth: number): TodoTreeItem[] => {
     if (depth > maxDepth) {
@@ -182,7 +222,7 @@ function toTodoTree(raw: RawNode[], maxDepth: number): TodoTreeItem[] {
     return out
   }
   const todos = convert(raw, 1)
-  if (inProgress > 1) {
+  if (!allowParallel && inProgress > 1) {
     throw new Error(`invalid todos: at most one task may be in_progress, got ${inProgress}`)
   }
   return todos
@@ -253,6 +293,7 @@ export function apply(ctx: Context, config: Config): void {
   }
   // schemastery (Config) has already filled every defaulted field.
   const maxDepth = config.maxDepth as number
+  const allowParallel = config.allowParallelInProgress
   if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > SCHEMA_DEPTH) {
     // The advertised schema spells out SCHEMA_DEPTH levels; accepting more
     // than it advertises (or a non-counting depth) would silently diverge the
@@ -280,7 +321,7 @@ export function apply(ctx: Context, config: Config): void {
   })
   ctx.tools.register(defineTool({
     name: 'todo_write',
-    description: DESCRIPTION,
+    description: describe(allowParallel),
     parameters: {
       todos: {
         type: 'array',
@@ -315,7 +356,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     /* jscpd:ignore-end */
     execute(args, exec) {
-      const todos = toTodoTree(args.todos, maxDepth)
+      const todos = toTodoTree(args.todos, maxDepth, allowParallel)
       if (!exec.agent) {
         // The tree is per-agent-session state; a non-agent caller (no owning
         // session) has nowhere to write it. Reject rather than silently no-op.

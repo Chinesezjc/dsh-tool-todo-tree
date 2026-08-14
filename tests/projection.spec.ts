@@ -42,7 +42,7 @@ async function harness(withTreeTool: boolean): Promise<Bench> {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SessionProjectionRegistry)
-  if (withTreeTool) await ctx.plugin(ToolTodoTree)
+  if (withTreeTool) await ctx.plugin(ToolTodoTree, { allowParallelInProgress: false })
   const session = ctx.sessions.create()
   ctx.agents.register({ id: session.id, session, status: 'idle', ctx } as Agent)
   return {
@@ -166,7 +166,7 @@ describe('todoTree projection provider', () => {
   it('drops the key when the tool-todo-tree fiber unloads (HMR safety)', async () => {
     const bench = await harness(false)
     seedMessage(bench.session)
-    const fiber = await bench.ctx.plugin(ToolTodoTree)
+    const fiber = await bench.ctx.plugin(ToolTodoTree, { allowParallelInProgress: false })
     expect((bench.tailProjections())?.values.todoTree).toBeNull()
     await fiber.dispose()
     expect('todoTree' in ((bench.tailProjections())?.values ?? {})).toBe(false)
