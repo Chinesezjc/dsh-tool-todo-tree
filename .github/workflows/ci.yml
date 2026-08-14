@@ -105,7 +105,7 @@ jobs:
             const ctx = new Context()
             await ctx.plugin(SystemPrompt, { persona: '' })
             await ctx.plugin(ToolRuntime)
-            await ctx.plugin(plugin, { maxDepth: 3 })
+            await ctx.plugin(plugin, { maxDepth: 3, allowParallelInProgress: true })
             await ctx.fiber.await()
             const schema = ctx.get('tools').schemas().find(s => s.name === 'todo_write')
             if (!schema) throw new Error('todo_write was not registered')
