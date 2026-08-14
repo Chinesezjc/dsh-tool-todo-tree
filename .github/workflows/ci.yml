@@ -71,6 +71,18 @@ jobs:
         working-directory: dsh
         run: pnpm run gen-tool-catalog
 
+      # The remaining two generated artifacts this plugin invalidates: it adds a
+      # `Config.maxDepth` section to docs/config-catalog.* and `tool-todo-tree`
+      # rows to the event producer/consumer graph (it emits `todo/tree` and
+      # listens on `internal/dispatch`). Verified by restoring all four catalogs
+      # to their committed state on an assembled tree: every one of the four
+      # verify gates reports stale, so generating only two left two unchecked.
+      - name: Regenerate the config catalog and doc graphs
+        working-directory: dsh
+        run: |
+          pnpm run gen-config-catalog
+          pnpm run gen-doc-graphs
+
       - name: Typecheck
         working-directory: dsh
         run: pnpm run typecheck
@@ -104,9 +116,14 @@ jobs:
           --coverage
           --coverage.include='packages/todo/tool-todo-tree/src/**'
 
-      # Re-runs the generator in --check mode against the output produced above:
+      # Re-runs each generator in --check mode against the output produced above:
       # a difference here means generation is not deterministic, since the
-      # regenerate step ran on this same tree.
-      - name: Verify the generated tool catalog is fresh
+      # regenerate steps ran on this same tree. All four are checked because all
+      # four go stale when this plugin is assembled.
+      - name: Verify every generated catalog is fresh
         working-directory: dsh
-        run: pnpm run verify-tool-catalog
+        run: |
+          pnpm run verify-tool-catalog
+          pnpm run verify-persistence-catalog
+          pnpm run verify-config-catalog
+          pnpm run verify-doc-graphs

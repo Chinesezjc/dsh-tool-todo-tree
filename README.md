@@ -87,9 +87,9 @@ interconnect 那类插件是纯 host 插件，可以整包独立存在。本插�
 
 以下结果均为实跑，基线是公开镜像 `deepseek-ai/deepseek-harness@47f9438`（与私有仓 master `2b9bd83960` 同期）。
 
-- **CI 在 GitHub runner 上全绿**（run [31716150745](https://github.com/Chinesezjc/dsh-tool-todo-tree/actions/runs/31716150745)）：装配、install、`build:lib:host`、两个生成器、typecheck、lint、测试、覆盖率门禁、`verify-tool-catalog` 共 14 个步骤全部 success。
+- **CI 在 GitHub runner 上全绿**：workflow 在一份 DSH 公开镜像的 fresh clone 里装配本插件，然后跑 install、`build:lib:host`、四个生成器、typecheck、lint、测试、覆盖率门禁，最后用四道 `verify-*` 门禁确认生成产物新鲜且生成是确定性的。
 
-- 把本仓按上面步骤 1–3 装配进一份**干净 clone**：9 个补丁全部 `git apply` 成功，`pnpm install`、`build:lib:host`、四个生成器均成功；`pnpm run typecheck` 与 `pnpm run lint` 退出 0；`packages/todo` + `packages/client/ui-tool` + `packages/client/ui-conversation` + `gen-tool-catalog.spec.ts` 共 **780/780** 通过；`verify-tool-catalog` 通过。
+- 把本仓按上面步骤 1–3 装配进一份**干净 clone**：9 个补丁全部 `git apply` 成功，`pnpm install`、`build:lib:host`、四个生成器均成功；`pnpm run typecheck` 与 `pnpm run lint` 退出 0；`packages/todo` + `packages/client/ui-tool` + `packages/client/ui-conversation` + `gen-tool-catalog.spec.ts` 共 **780/780** 通过；四道 `verify-*` catalog 门禁全部通过。
 - 插件包自身 5 个测试文件、81 个用例：注册表／不变式单测、真实 agent-loop 集成、`todoTree` projection、以及经真实 Loader 引导 cordis.yml 的 `loader-composition`（证明 `maxDepth` 是真配置项而非常量）。
 - 本包 `src/**` 在主仓的 per-file 100% 覆盖率门禁下达标：语句 154/154、分支 104/104、函数 27/27、行 131/131。
 - 在完整工作副本上另外跑过：`pnpm run test:gui` 272 文件 / 3765 用例全通过；`pnpm run doc-sync` 28 道门禁全绿；`pnpm run build` 退出 0。
@@ -105,6 +105,7 @@ interconnect 那类插件是纯 host 插件，可以整包独立存在。本插�
   - 删掉 fold 里的 `todo/tree` 分支 → 3 个依赖 last-wins 的用例转红。
   - 把 `withTreeTool=false` 的 harness 改成始终挂载 → 「未组合时无该键」与 HMR 卸载两个用例转红。
 - 覆盖率的双向对照：移除 `tests/projection.spec.ts` 后，`src/index.ts` 掉到语句 87.67% / 分支 89.74% / 函数 64.28% / 行 90.76%，未覆盖行恰为 projection 注册块 `268-277`，四项均触发主仓 per-file 100% 门禁报错；加回后回到 100%。即该 spec 缺失会让 `test:coverage` 直接失败。
+- 生成产物的双向对照：在已装配的树上把四份 catalog 全部 `git checkout` 回提交态（等于 CI 的 fresh clone），`verify-tool-catalog`、`verify-persistence-catalog`、`verify-config-catalog`、`verify-doc-graphs` **四道全部报 stale**；依次跑四个生成器后四道全过，且再跑一遍生成器输出 byte-identical（确定性）。本插件让后两者变脏的原因是它向 `docs/config-catalog.*` 增加 `Config.maxDepth` 一节、并因 emit `todo/tree` 与监听 `internal/dispatch` 而进入事件生产/消费图。
 
 ## 从原 PR 移植时修掉的问题
 
