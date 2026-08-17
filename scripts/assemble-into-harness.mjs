@@ -82,6 +82,9 @@ for (const browserOnly of [
   // Asserts the contract of THIS repo's built `lib/client.js`. The harness never
   // builds the browser half, so that artifact does not exist in-tree.
   'tests/bundle.spec.ts',
+  // Reads `src/todo-tree.module.css`, which the loop above removes: the
+  // stylesheet is part of the browser half and never reaches the harness copy.
+  'tests/stylesheet.spec.ts',
 ]) {
   await rm(join(target, browserOnly), { force: true })
 }
