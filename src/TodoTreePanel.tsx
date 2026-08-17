@@ -30,17 +30,17 @@ export interface TodoTreePanelProps {
 function StatusGlyph({ status }: { status: PlanRow['status'] }) {
   if (status === 'completed') {
     return (
-      <svg width={14} height={14} viewBox="0 0 14 14" fill="none" aria-hidden="true" className={css.completed}>
-        <circle cx="7" cy="7" r="6.4" stroke="currentColor" strokeWidth="1.2" />
-        <path d="M3.6 7.2 5.9 9.4l4.5-4.6" stroke="currentColor" strokeWidth="1.3" fill="none" />
+      <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden="true" className={css.completed}>
+        <circle cx="8" cy="8" r="7.3" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M4.1 8.2 6.7 10.8l5.2-5.3" stroke="currentColor" strokeWidth="1.5" fill="none" />
       </svg>
     )
   }
   if (status === 'in_progress') {
     return (
-      <svg width={14} height={14} viewBox="0 0 14 14" fill="none" aria-hidden="true" className={css.active}>
-        <circle cx="7" cy="7" r="6.4" stroke="currentColor" strokeWidth="1.2" opacity="0.35" />
-        <path d="M7 0.6a6.4 6.4 0 0 1 6.4 6.4" stroke="currentColor" strokeWidth="1.3" fill="none" />
+      <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden="true" className={css.active}>
+        <circle cx="8" cy="8" r="7.3" stroke="currentColor" strokeWidth="1.4" opacity="0.35" />
+        <path d="M8 0.7a7.3 7.3 0 0 1 7.3 7.3" stroke="currentColor" strokeWidth="1.5" fill="none" />
       </svg>
     )
   }
@@ -48,8 +48,8 @@ function StatusGlyph({ status }: { status: PlanRow['status'] }) {
   // does not know is still a node the model wrote, so it is listed rather than
   // dropped or guessed into another state.
   return (
-    <svg width={14} height={14} viewBox="0 0 14 14" fill="none" aria-hidden="true" className={css.pending}>
-      <circle cx="7" cy="7" r="6.4" stroke="currentColor" strokeWidth="1.2" strokeDasharray="2.4 2.4" />
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden="true" className={css.pending}>
+      <circle cx="8" cy="8" r="7.3" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2.8 2.8" />
     </svg>
   )
 }
@@ -77,37 +77,41 @@ export function TodoTreePanel({ todos, t }: TodoTreePanelProps) {
 
   return (
     <section className={css.strip} data-testid="todo-tree-panel" aria-label={t('panel.title')}>
-      <button
-        type="button"
-        className={css.header}
-        aria-expanded={!collapsed}
-        onClick={() => { setCollapsed(value => !value) }}
-      >
-        <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
-        <span className={css.title}>{t('panel.title')}</span>
-        <span className={css.progress}>{progressLabel(rows, t)}</span>
-        <span className={css.chevron} aria-hidden>
-          {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
-        </span>
-      </button>
-      {!collapsed && (
-        <ul className={css.list}>
-          {rows.map((row, index) => (
-            // Content is unique only among siblings, so the index carries the
-            // identity a repeated child name would otherwise collide on.
-            <li
-              key={`${String(index)}:${row.content}`}
-              className={row.status === 'completed' ? `${css.item} ${css.done}` : css.item}
-              data-status={row.status}
-              data-depth={row.depth}
-              style={{ '--dsw-todo-tree-depth': row.depth } as React.CSSProperties}
-            >
-              <span className={css.glyph} aria-hidden><StatusGlyph status={row.status} /></span>
-              <span className={css.content}>{row.content}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* `.strip` owns the card edge and clips it; `.body` owns the inner
+          padding, exactly as the flat strip splits them. */}
+      <div className={css.body}>
+        <button
+          type="button"
+          className={css.header}
+          aria-expanded={!collapsed}
+          onClick={() => { setCollapsed(value => !value) }}
+        >
+          <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
+          <span className={css.title}>{t('panel.title')}</span>
+          <span className={css.progress}>{progressLabel(rows, t)}</span>
+          <span className={css.chevron} aria-hidden>
+            {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
+          </span>
+        </button>
+        {!collapsed && (
+          <ul className={css.list}>
+            {rows.map((row, index) => (
+              // Content is unique only among siblings, so the index carries the
+              // identity a repeated child name would otherwise collide on.
+              <li
+                key={`${String(index)}:${row.content}`}
+                className={row.status === 'completed' ? `${css.item} ${css.done}` : css.item}
+                data-status={row.status}
+                data-depth={row.depth}
+                style={{ '--dsw-todo-tree-depth': row.depth } as React.CSSProperties}
+              >
+                <span className={css.glyph} aria-hidden><StatusGlyph status={row.status} /></span>
+                <span className={css.content}>{row.content}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   )
 }

@@ -64,6 +64,7 @@ mkdir -p "$DSH_HOME/.agent-presets/<名字>"
 **Web 侧**（`exports["./client"]`，由 `dsh.client` 声明，web shell 自行发现并加载）
 
 - 计划条：注册进 `conversation.input.dock`，读 `todoTree` projection，按深度缩进列出每一层节点；折叠态表头给出跨全部深度的各状态计数
+- 卡片外观（`--dsw-alias-border-l1` 边框、12px 圆角、`--dsw-specific-tip` 底色、dock 列宽与 180px 滚动上限、字号字重）与扁平工具的计划条逐条对齐——两者替换的是同一个 dock 位，**唯一有意的视觉差异是 `.item` 的深度缩进**
 - `todo_write` 行：注册进 keyed slot `tool.call.toolview`，以 `priority: -1` **遮蔽**内置的扁平行（keyed slot 的规则是同 key 同 priority 报错、更低者渲染），单行摘要同样逐层统计
 - 两处遍历都用显式栈：它们读的计划都未经校验（行读的是一次调用的 `argsRaw`，即使该调用被 `execute` 拒绝也原样保留；计划条读的可能来自本 build 没写过的日志），递归会把一个畸形计划变成 `RangeError` 并带崩整个会话渲染
 
@@ -71,7 +72,7 @@ mkdir -p "$DSH_HOME/.agent-presets/<名字>"
 
 以下均为实跑结果。CI 两个 job：`standalone` 走 npm 安装链路，`patches` 走源码树装配链路。
 
-**独立路径（无 monorepo）**：`pnpm install` 只从 npm 取依赖；`pnpm run typecheck`（host 与 client 两个 face）退出 0；`pnpm run test` **106/106 通过**；`pnpm run build` 成功（host 半边 6 个产物 + 浏览器半边 `lib/client.js` 13.8 kB）。
+**独立路径（无 monorepo）**：`pnpm install` 只从 npm 取依赖；`pnpm run typecheck`（host 与 client 两个 face）退出 0；`pnpm run test` **112/112 通过**；`pnpm run build` 成功（host 半边 6 个产物 + 浏览器半边 `lib/client.js` 16.8 kB）。
 
 **真实安装链路**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；profile 的 `dsh.profile.bundles` 出现 `dsh-tool-todo-tree`；随后从 profile 解析插件、从 profile 的 healed mirror 解析 harness 包，挂到真实 `ToolRuntime` 上读回工具：`todo_write` 已注册，节点字段为 `content,status,children`，且第二层仍公布 `children`（嵌套形状真实可见）。
 
@@ -80,6 +81,8 @@ mkdir -p "$DSH_HOME/.agent-presets/<名字>"
 **浏览器半边（产物）**：`lib/client.js` 是 shell 要求的 closure-factory 形态——`window.__ModuleLoader__.load({ id, factory: (require) => …})`，`react`、`react/jsx-runtime`、`@deepseek-ai/dsh-client-ui-primitives` 全部走注入的 `require`（React 未被打进去）；CSS Module 编译进包，注入恰好一个 `style[data-plugin="dsh-tool-todo-tree"]`。用 shell 模块表的替身加载后，`apply` 实际注册出 `conversation.input.dock`（`id=todo-tree`）与 `tool.call.toolview`（`key=todo_write, priority=-1`）。`tests/bundle.spec.ts` 把这些断言钉在**产物**上，因为组件测试 import 的是源码、对输出格式不敏感。
 
 **真实浏览器**：从 npm 装 `0.2.0` 到 profile、起 `dsh web`，页面的 boot roster 里出现 `dsh-tool-todo-tree`（39 个 client 插件之一，带自己的 URL 与 inject 列表），bundle 以 HTTP 200 / 13.8 kB 送达；用 puppeteer 打开真实页面，无 console error、shell 未报插件失败、我的样式表注入了恰好 1 个。缩进用**计算样式**验证：深度 0/1/2 算出 `0px / 18px / 36px`，去掉深度变量后全为 `0px`（双向对照）。
+
+卡片本身也按计算样式回读过（`0.3.0` 修复后）：`background` = `rgb(245, 246, 247)`、`border` = `1px solid rgba(0, 0, 0, 0.04)`、`border-radius` = `12px`、宽度 `748px` 且位于 composer 之上；列表 `max-height` 180px、`overflow-y: auto`，10 行时 `scrollHeight` 272 > `clientHeight` 180，滚到底后最后一行完整可见——超出部分是滚动而非截断。
 
 **Web 侧可发现性**：`dsh plugin add` 之后，从 profile 解析出的已安装包满足 shell 扫描器读的全部条件——`dsh.client.platform === 'web'`、`exports["./client"]` 解析到磁盘上真实存在的 `./lib/client.js`。
 
@@ -92,6 +95,17 @@ mkdir -p "$DSH_HOME/.agent-presets/<名字>"
 - 移除 `tests/projection.spec.ts` → `src/index.ts` 掉到 90.76% 行覆盖，未覆盖行正是 projection 注册块，覆盖率门禁 `exit=1`。
 - 把 `planRows` 改成只遍历顶层 → 8 个用例转红（含计划条缩进、跨深度计数、20 万层嵌套那条）。
 - keyed slot 的 `priority` 语义是在主仓里用探针实测的：同 key 同 priority 第二次注册直接抛错（错误信息本身指出「register at a different priority to shadow it (lowest renders)」），改成 `priority: -1` 后即被接受。
+- `tests/stylesheet.spec.ts` 的四条断言各自反向注入一次：把边框 token 换回 `--dsw-alias-line-secondary` → 3 条转红；删掉 `background` 声明 → 卡片面断言转红；删掉 `padding-inline-start` → 缩进断言转红；重新引入 `composes:` → 对应断言转红。
+
+### 已修：卡片曾经没有边框和底色
+
+`0.3.0` 之前 `.strip` 用的是 `--dsw-alias-line-secondary`（边框）与 `--dsw-alias-fill-surface-l2`（背景）。**ui-theme 两个都没定义**，浏览器于是丢弃这两条声明：文字与状态图标的 token 都正常解析，所以颜色对，但卡片没有边框、背景透明，读起来像散在 dock 里的一段文字而不是一张卡片。
+
+这个缺陷整条工具链都抓不到：未定义的自定义属性不是错误，`typecheck`、组件测试（jsdom 不做主题解析）、`bundle.spec.ts`（只断言产物格式）全部照绿。唯一能抓住它的位置是把 token 名钉在「已在真实页面回读过」的集合上，这就是 `tests/stylesheet.spec.ts` 的职责——新增 token 前必须先在运行中的页面里读出它的值。
+
+顺带两个实测结论：shell 自己的 `ui-conversation/ContextBody.module.css` 也在引用同一个失效的 `--dsw-alias-line-secondary`（不止本插件）；`--dsw-alias-fill-l2` 同样解析不出来，所以它不能当替代品，正确的背景 token 是 `--dsw-specific-tip`。
+
+另外 `composes:` 在本包的构建链下**不会展开**——产物里 `.row` 的类名不含被借用的类，规则会静默丢掉布局。已改为每条规则各自写全，并由断言守住。
 
 **真实模型会话的端到端实录**（隔离 `DSH_HOME`，真 API key，preset 已删掉扁平工具那一项）：模型一次调用 `todo_write` 写出三父六子的嵌套计划后——落库事件是 `todo/tree`；projection 里出现 `todoTree` 且携带完整嵌套数据，`todos` 键不存在；工具结果文案是 `Update todo tree`。真实浏览器页面里计划条显示 `Todo tree · 1 in progress · 8 pending`，工具行显示 `Update todo tree · 0/9 completed · 调研`（9 = 3 父 + 6 子）。
 

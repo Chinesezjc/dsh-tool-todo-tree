@@ -1,79 +1,140 @@
 /* The plan strip and the tool row. Tokens only: every color and radius comes
    from the shell's `--dsw-*` alias layer, so the plugin follows the active
-   theme with no literals of its own. */
+   theme with no literals of its own.
+
+   The card geometry, surface and type scale mirror the flat tool's strip
+   (ui-conversation skeleton/TodoPanel.module.css): this plugin replaces that
+   strip in the same dock column, so a different card would read as a second,
+   unrelated widget rather than the same strip carrying a nested plan. The ONLY
+   intentional visual difference is `.item`'s depth inset.
+
+   Earlier revisions styled the card with `--dsw-alias-line-secondary` and
+   `--dsw-alias-fill-surface-l2`. Neither token is defined by ui-theme, so both
+   declarations were dropped by the browser and the card rendered with no border
+   and a transparent background — the labels still had color, which is why it
+   looked like loose text in the dock instead of a card. Every custom property
+   below was read back from a live page before being used here. */
 
 .strip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-line-secondary);
-  border-radius: 10px;
-  background: var(--dsw-alias-fill-surface-l2);
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  margin: 0 auto;
+  /* Match the dock column the flat strip, the goal bar and the queue panel
+     share, so the three cards line up on both edges. */
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-specific-tip);
+  /* `.list` scrolls inside this card, so the thumb takes the l2 elevation
+     tokens; they inherit down to `.list`. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+/* The strip's collapsible header (a button) and the transcript row (a plain div)
+   are both one line of lead glyph + title + summary. The shared metrics are
+   spelled out in each rule rather than shared through `composes`: this package's
+   bundler emits the class map without expanding `composes`, so a composed class
+   silently loses the borrowed declarations (verified on the built artifact).
+   Interaction affordances stay on `.header`, because only the strip toggles. */
 .header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
   padding: 0;
-  border: 0;
-  background: none;
+  border: none;
+  background: transparent;
   font: inherit;
-  color: var(--dsw-alias-label-primary);
+  text-align: left;
   cursor: pointer;
-  text-align: start;
+}
+
+/* The transcript row is not interactive: it neither expands nor toggles, so it
+   takes the shared line metrics without the button reset or the pointer cursor. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .lead {
   display: grid;
   flex: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .title {
+  flex: none;
   font-size: 13px;
-  line-height: 20px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
 }
 
 .progress {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-caption);
 }
 
 .chevron {
   display: grid;
   flex: none;
   place-items: center;
-  color: var(--dsw-alias-label-caption);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
 }
 
-/* Depth is the whole point of this plugin: each level insets by one step, and a
-   flat plan (every row depth 0) renders with no inset at all. */
+/* Depth is the whole point of this plugin, and the one place this strip departs
+   from the flat one: each level insets by one step, and a flat plan (every row
+   depth 0) renders with no inset at all. */
 .item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   font-size: 13px;
   line-height: 20px;
@@ -85,8 +146,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .completed {
@@ -95,12 +156,20 @@
 
 .active {
   color: var(--dsw-alias-state-business-primary);
+  animation: todo-tree-progress-spin 1s linear infinite;
 }
 
 .pending {
   color: var(--dsw-alias-label-caption);
 }
 
+@keyframes todo-tree-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Figma strip is single-line; long items ellipsize with no inline expand. */
 .content {
   min-width: 0;
   overflow: hidden;

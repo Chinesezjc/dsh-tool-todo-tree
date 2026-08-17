@@ -39,7 +39,7 @@ export function TodoTreeRow({ block, t }: TodoTreeRowProps) {
   const tail = summary?.activeContent === null || summary === null ? '' : ` · ${summary.activeContent}`
 
   return (
-    <div className={css.header} data-testid="todo-tree-row">
+    <div className={css.row} data-testid="todo-tree-row">
       <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
       <span className={css.title}>{t('row.title')}</span>
       <span className={css.progress}>
