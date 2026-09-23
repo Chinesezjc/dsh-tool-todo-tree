@@ -51,7 +51,6 @@ const DEV = [
   '@deepseek-ai/cordis-plugin-loader',
   '@deepseek-ai/dsh-agent-loop',
   '@deepseek-ai/dsh-agent-loop-testkit',
-  '@deepseek-ai/dsh-host-apiproxy',
   '@deepseek-ai/dsh-llm',
   '@deepseek-ai/dsh-system-prompt',
   '@deepseek-ai/dsh-tool-todo',
