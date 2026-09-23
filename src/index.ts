@@ -1,12 +1,11 @@
 /**
  * Model-facing whole-tree replacement. Each call appends a `todo/tree` snapshot to the calling
  * agent's session; replay is last-write-wins, and UIs render from session events. A non-agent
- * caller has no owning tree and is rejected. This package is the nested ALTERNATIVE to
- * `@deepseek-ai/dsh-tool-todo`: both register `todo_write`, so a deployment picks exactly one.
- * Two mounts at the same registry layer collide on the name and the registry rejects whichever
- * mounts second (silently, until boot audits FAILED fibers). A SCOPED mount does not collide —
- * scoped registrations shadow globals by design — so {@link apply} rejects it outright; see
- * {@link apply} for why shadowing is not an acceptable form of selection here.
+ * caller has no owning tree and is rejected. The tool registers under this package's own name,
+ * `todo_tree_write`, which is NOT the flat `@deepseek-ai/dsh-tool-todo`'s `todo_write`: a
+ * distinct name is what lets both tools be composed in one deployment, and it is why the flat
+ * tool every shipped agent preset mounts cannot shadow this one. A deployment that wants the
+ * nested shape instead of the flat list disables the flat row in its own overlay.
  * Named exports preserve loader injection metadata.
  * @module @deepseek-ai/dsh-tool-todo-tree
  */
@@ -15,7 +14,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
 import type { ZodType } from 'zod'
-import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ObjectValueSchemaSpec } from '@deepseek-ai/dsh-tools'
 // The `todoTree` projection-key declaration lives in src/types.ts (its one home);
@@ -53,8 +51,8 @@ export interface Config {
    * node. False restores the single-active discipline: the description asks for exactly one across
    * the whole tree, and a call marking more is rejected.
    *
-   * Mirrors `@deepseek-ai/dsh-tool-todo`'s flag of the same name, so swapping the flat tool for this
-   * one does not silently change the parallel policy a deployment already chose.
+   * Mirrors `@deepseek-ai/dsh-tool-todo`'s flag of the same name, so a deployment that replaces the
+   * flat tool with this one does not silently change the parallel policy it already chose.
    */
   allowParallelInProgress: boolean
 }
@@ -68,7 +66,9 @@ const DESCRIPTION_HEAD =
   'Record and update a structured task tree for the current work. Send the ENTIRE '
   + 'tree every call — it REPLACES the previous tree (there are no partial updates, '
   + 'no per-item edits). Use it to plan multi-step work and show progress: one todo '
-  + 'per concrete step, with `children` breaking a step into sub-steps. '
+  + 'per concrete step, with `children` breaking a step into sub-steps. This is the '
+  + 'nested counterpart of the flat `todo_write` tool: prefer it when steps have '
+  + 'sub-steps, and the flat tool for a single-level list. '
 
 const DESCRIPTION_PARALLEL =
   'Mark every node being actively worked on `in_progress` — several at once when '
@@ -270,27 +270,17 @@ const todoTreeProjectionSchema: ZodType<TodoTreeItem[] | null> = zod.union([
 ]) as ZodType<TodoTreeItem[] | null>
 
 /**
- * Register the tree-shaped `todo_write` tool on `ctx.tools`.
+ * Register the tree-shaped `todo_tree_write` tool on `ctx.tools`.
  *
- * Refuses a scoped context. Shape selection between this package and
- * `@deepseek-ai/dsh-tool-todo` relies on the registry rejecting a duplicate
- * name, and that rejection is per layer: a scoped registration deliberately
- * SHADOWS a same-named global instead of colliding with it. Shadowing is a
- * legitimate mechanism for per-agent tool variants, but not for these two,
- * because the shape is not confined to the tool surface — each writes a
- * different durable session event. A shadow that is later disposed or
- * HMR-unloaded silently returns the agent to the global flat tool, so one
- * session's log ends up carrying both `todo/tree` and `todo/write` snapshots
- * with no record of which shape was authoritative when. Rejecting at load
- * keeps "exactly one shape per session" a property of the composition rather
- * than of registration order and fiber lifetime.
- * @param ctx - Cordis context carrying `ctx.tools`; must be unscoped.
+ * The name is this package's own, so nothing here competes for the flat
+ * `todo_write` registration and a scoped mount is legitimate: a scoped instance
+ * shadows this package's global one by name, exactly as any per-agent tool
+ * variant does. Both todo tools may write in one session log; each shape is
+ * durable under its own event type and consumers read the one they registered.
+ * @param ctx - Cordis context carrying `ctx.tools`.
  * @param config - validated plugin config (schemastery has filled every default).
  */
 export function apply(ctx: Context, config: Config): void {
-  if (scopeOf(ctx) !== undefined) {
-    throw new Error('tool-todo-tree must mount on an unscoped context: a scoped registration shadows a global `todo_write` instead of colliding with it, so disposing it would silently return the agent to the flat tool and mix `todo/tree` and `todo/write` in one session log — disable the flat tool at the composition root instead')
-  }
   // schemastery (Config) has already filled every defaulted field.
   const maxDepth = config.maxDepth as number
   const allowParallel = config.allowParallelInProgress
@@ -320,7 +310,7 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
   ctx.tools.register(defineTool({
-    name: 'todo_write',
+    name: 'todo_tree_write',
     description: describe(allowParallel),
     parameters: {
       todos: {
@@ -360,18 +350,9 @@ export function apply(ctx: Context, config: Config): void {
       if (!exec.agent) {
         // The tree is per-agent-session state; a non-agent caller (no owning
         // session) has nowhere to write it. Reject rather than silently no-op.
-        throw new Error('todo_write requires an owning agent session')
+        throw new Error('todo_tree_write requires an owning agent session')
       }
       const session = exec.agent.session
-      // The load-time scoped-mount guard cannot see the mirror composition: the
-      // FLAT tool mounted scoped over a global tree shadows this one, and
-      // disposing that scope hands the agent back here mid-session. The
-      // `./invariant` companion catches the mix too, but companions are opt-in
-      // diagnostics that no shipped composition mounts, so refusing the append
-      // here is what actually holds "one shape per session log" in production.
-      if (session.events.some(event => event.type === 'todo/write')) {
-        throw new Error('session already carries a flat todo/write list; a deployment must mount exactly one todo tool')
-      }
       session.append('todo/tree', { todos })
       return Promise.resolve({
         todos,

@@ -8,6 +8,8 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { type Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { Scope } from '@deepseek-ai/dsh-scope'
+// The flat tool, mounted next to this package in the coexistence test.
+import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 
 import * as tool from '../src/index.ts'
 import type { TodoTreeItem } from '../src/index.ts'
@@ -16,7 +18,7 @@ const testToolSignal = new AbortController().signal
 
 /**
  * Drives the REAL plugin body: mounts `dsh-tool-todo-tree` on a real
- * `ToolRegistry` and invokes the registered `todo_write` tool through
+ * `ToolRegistry` and invokes the registered `todo_tree_write` tool through
  * `ctx.tools.execute`, with a fake parent Agent carrying a real `Session` — so
  * the append the tool makes is observable on a genuine session log (only the
  * agent wrapper is a stand-in; the session and the tool are the shipping code).
@@ -43,7 +45,7 @@ function callTodo(ctx: Context, args: unknown, over: { agent?: Agent | undefined
   return ctx.tools.execute({
     signal: testToolSignal,
     callId: CallId(`call-${++callCounter}`),
-    name: 'todo_write',
+    name: 'todo_tree_write',
     arguments: args,
     ...agent ? { agent } : {},
   })
@@ -54,9 +56,9 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 }
 
 describe('dsh-tool-todo-tree', () => {
-  it('registers a `todo_write` tool whose schema nests children to exactly SCHEMA_DEPTH levels', async () => {
+  it('registers a `todo_tree_write` tool whose schema nests children to exactly SCHEMA_DEPTH levels', async () => {
     const ctx = await setup()
-    const schema = ctx.tools.schemas().find(s => s.name === 'todo_write')
+    const schema = ctx.tools.schemas().find(s => s.name === 'todo_tree_write')
     expect(schema).toBeDefined()
     const props = (schema!.parameters as { properties?: Record<string, unknown> }).properties ?? {}
     expect(Object.keys(props)).toEqual(['todos'])
@@ -95,7 +97,7 @@ describe('dsh-tool-todo-tree', () => {
     ]
     const result = await callTodo(ctx, { todos }, { agent })
     expect(result.isError).toBe(false)
-    if (result.isError) throw new Error('expected todo_write success')
+    if (result.isError) throw new Error('expected todo_tree_write success')
     expect(result.value).toEqual({
       todos,
       counts: { pending: 2, inProgress: 1, completed: 1 },
@@ -148,17 +150,17 @@ describe('dsh-tool-todo-tree', () => {
     expect(text(result)).toContain(`maximum depth of ${tool.SCHEMA_DEPTH}`)
   })
 
-  it('refuses to append over a flat list already in the session log', async () => {
-    // The mirror composition the load-time guard cannot see: the FLAT tool
-    // mounted scoped over this global one, then disposed mid-session. The
-    // invariant companion catches the mix too, but companions are opt-in
-    // diagnostics no shipped composition mounts, so `execute` has to refuse.
+  it('appends over a flat list already in the session log (the two tools coexist)', async () => {
+    // A preset mounts the flat tool at agent scope; this package's tool is at
+    // host scope. The names differ, so both may be called in one session and each
+    // shape lands under its own event type. Refusing here would make the tree
+    // tool unusable in every shipped preset.
     const ctx = await setup()
     const agent = agentWithSession('already-flat')
     agent.session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
     const result = await callTodo(ctx, { todos: [{ content: 'tree', status: 'pending' }] }, { agent })
-    expect(text(result)).toContain('session already carries a flat todo/write list')
-    expect(agent.session.events.some(e => e.type === 'todo/tree')).toBe(false)
+    expect(result.isError).toBe(false)
+    expect(agent.session.events.map(e => e.type)).toEqual(['todo/write', 'todo/tree'])
   })
 
   it('replaces the tree on a second call (last-write-wins on the log)', async () => {
@@ -268,7 +270,7 @@ describe('dsh-tool-todo-tree', () => {
 
   it('presents the call with a stable title and the tree as raw input', async () => {
     const ctx = await setup()
-    const def = ctx.tools.get('todo_write')!
+    const def = ctx.tools.get('todo_tree_write')!
     const todos = [{ content: 'a', status: 'pending' }]
     expect(def.presentCall?.({ todos })).toEqual({ card: 'generic', title: 'Update todo tree', kind: 'other', rawInput: todos })
   })
@@ -278,27 +280,42 @@ describe('dsh-tool-todo-tree', () => {
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
     const fiber = await ctx.plugin(tool, { allowParallelInProgress: false })
-    expect(ctx.tools.schemas().some(s => s.name === 'todo_write')).toBe(true)
+    expect(ctx.tools.schemas().some(s => s.name === 'todo_tree_write')).toBe(true)
     await fiber.dispose()
-    expect(ctx.tools.schemas().some(s => s.name === 'todo_write')).toBe(false)
+    expect(ctx.tools.schemas().some(s => s.name === 'todo_tree_write')).toBe(false)
   })
 
-  it('refuses to mount on a scoped context (a shadow is not a shape selection)', async () => {
-    // A scoped registration shadows a same-named global instead of colliding
-    // with it, so mounting here would leave the flat tool reachable the moment
-    // this fiber is disposed or HMR-unloaded — mixing both durable shapes in
-    // one session log. The name collision that selects a shape only works at
-    // one layer, so the scoped path must be rejected outright.
+  it('mounts alongside the flat tool: the two registrations never collide', async () => {
+    // This is the property the distinct name buys. Reverting the tool name to
+    // `todo_write` makes the second registration collide and this test fail.
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
+    await ctx.plugin(ToolTodo, { allowParallelInProgress: true })
+    await ctx.plugin(tool, { allowParallelInProgress: true })
+    const names = ctx.tools.schemas().map(s => s.name)
+    expect(names).toContain('todo_write')
+    expect(names).toContain('todo_tree_write')
+  })
+
+  it('mounts on a scoped context: the name is this package\'s own, so a scoped instance is an ordinary variant', async () => {
+    // Nothing here competes for the flat tool's registration, so a scoped mount
+    // shadows THIS package's global row by name the same way any per-agent tool
+    // variant does, and disposing the scope leaves the global row in place.
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRegistry)
+    await ctx.plugin(tool, { allowParallelInProgress: false })
     let scope!: Scope
     await ctx.plugin(Object.assign((inner: Context) => {
       scope = createScope(inner, { id: SessionId('a1') })
     }, { inject: ['tools', 'systemPrompt'] }))
 
-    await expect(scope.ctx.plugin(tool, { allowParallelInProgress: false }).then(() => undefined))
-      .rejects.toThrow(/must mount on an unscoped context/)
+    const fiber = await scope.ctx.plugin(tool, { allowParallelInProgress: false })
+    expect(scope.ctx.tools.schemas().some(s => s.name === 'todo_tree_write')).toBe(true)
+    await fiber.dispose()
+    // The host-scope registration is untouched by the scope's disposal.
+    expect(ctx.tools.schemas().some(s => s.name === 'todo_tree_write')).toBe(true)
   })
 
   it('has the namespace-plugin export shape (no stray default) so the Loader keeps name/inject/apply', () => {

@@ -1,9 +1,9 @@
 // Proves `maxDepth` is real configurability and not a constant: the value is set
 // in a cordis.yml booted through the real Loader, and the depth the tool ACCEPTS
 // follows it while the advertised schema keeps its fixed SCHEMA_DEPTH expansion.
-// Also boots the load-time rejections (out-of-range maxDepth, scoped mount)
-// through the same real composition, because both are contracts a deployment
-// hits at startup rather than at first call.
+// Also boots the load-time rejection (out-of-range maxDepth) through the same
+// real composition, because it is a contract a deployment hits at startup rather
+// than at first call.
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -107,7 +107,7 @@ function execute(ctx: Context, owner: Agent, todos: unknown, callId: string) {
   return ctx.tools.execute({
     signal: new AbortController().signal,
     callId: CallId(callId),
-    name: 'todo_write',
+    name: 'todo_tree_write',
     arguments: { todos },
     agent: owner,
   })
@@ -118,7 +118,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     const ctx = await boot(['    maxDepth: 1', '    allowParallelInProgress: false'])
     // The model contract is the fixed SCHEMA_DEPTH expansion regardless of the
     // configured cap, so the schema still describes children two levels down.
-    const schema = ctx.tools.schemas().find(s => s.name === 'todo_write')
+    const schema = ctx.tools.schemas().find(s => s.name === 'todo_tree_write')
     const level1 = (schema?.parameters as { properties?: Record<string, { items?: { properties?: Record<string, unknown> } }> })
       .properties?.todos?.items?.properties
     expect(level1).toHaveProperty('children')
@@ -162,7 +162,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
 
   it('allowParallelInProgress: false rejects several in_progress nodes and narrows the description', async () => {
     const ctx = await boot(['    allowParallelInProgress: false'])
-    const description = ctx.tools.schemas().find(s => s.name === 'todo_write')?.description ?? ''
+    const description = ctx.tools.schemas().find(s => s.name === 'todo_tree_write')?.description ?? ''
     expect(description).toContain('AT MOST ONE todo `in_progress` across the WHOLE tree')
     expect(description).not.toContain('several at once')
 
@@ -177,7 +177,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     // The flat tool ships the same flag, and a deployment that chose parallel
     // work must not lose it by swapping in the nested shape.
     const ctx = await boot(['    allowParallelInProgress: true'])
-    const description = ctx.tools.schemas().find(s => s.name === 'todo_write')?.description ?? ''
+    const description = ctx.tools.schemas().find(s => s.name === 'todo_tree_write')?.description ?? ''
     expect(description).toContain('several at once when work genuinely runs in parallel')
 
     const owner = agent(ctx)

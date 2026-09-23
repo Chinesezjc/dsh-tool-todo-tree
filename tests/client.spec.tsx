@@ -7,6 +7,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { TodoTreePanel } from '../src/TodoTreePanel.tsx'
 import { TodoTreeRow } from '../src/TodoTreeRow.tsx'
+import { apply } from '../src/client.tsx'
 import { planRows, rowsFromArgs, summarize } from '../src/plan.ts'
 import { zh } from '../src/locales.ts'
 
@@ -175,5 +176,39 @@ describe('TodoTreeRow', () => {
     expect(row.textContent).toContain('更新任务树')
     expect(row.textContent).not.toContain('已完成')
     expect(screen.queryByTestId('todo-tree-row-extra')).toBeNull()
+  })
+})
+
+describe('apply', () => {
+  /**
+   * Records what the browser half registers without a real shell: `ctx.effect`
+   * flattens to the callback, and the two services the plugin injects are stubs.
+   */
+  function registered() {
+    const dock: unknown[] = []
+    const rows: { key?: string; priority?: number }[] = []
+    const ctx = {
+      effect: (fn: () => unknown) => { fn() },
+      locale: { register: () => () => {} },
+      slots: {
+        inject: (_name: string, fn: () => unknown) => { fn() },
+        register: (options: Record<string, unknown>) => {
+          if (options.name === 'conversation.input.dock') dock.push(options)
+          else rows.push(options as { key?: string; priority?: number })
+          return () => {}
+        },
+      },
+    }
+    apply(ctx as never)
+    return { dock, rows }
+  }
+
+  it('registers the strip on the dock and the row under this package\'s own tool name', () => {
+    // The keyed cell's key must equal the host half's tool name, or the row never
+    // renders for a call. Renaming one without the other fails here.
+    const { dock, rows } = registered()
+    expect(dock).toHaveLength(1)
+    expect(dock[0]).toMatchObject({ id: 'todo-tree', locale: 'todoTree' })
+    expect(rows).toEqual([{ name: 'tool.call.toolview', key: 'todo_tree_write', locale: 'todoTree' }])
   })
 })

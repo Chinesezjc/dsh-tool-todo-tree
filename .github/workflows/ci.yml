@@ -29,11 +29,14 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Test
-        run: pnpm run test
-
+      # The build runs before the tests: tests/bundle.spec.ts asserts the BUILT
+      # artifact, and `prepare` is the only thing that would otherwise produce it
+      # (a local `.npmrc` with `ignore-scripts=true` skips `prepare`).
       - name: Build
         run: pnpm run build
+
+      - name: Test
+        run: pnpm run test
 
       # Proves the published artifact is loadable, not just compilable: pack it,
       # install it into a real profile through the CLI, and confirm the bundle
@@ -71,8 +74,8 @@ jobs:
       # package. Assert the contract the shell's scanner actually reads
       # (`dsh.client.platform` + a resolvable `exports["./client"]`), then load the
       # built bundle and confirm it claims both slots — including the keyed
-      # `todo_write` row at a lower priority, which is what shadows the built-in
-      # flat row without patching the package that owns it.
+      # `todo_tree_write` row, whose key must equal the host half's tool name or
+      # the row never renders for a call.
       - name: Verify the browser half is discoverable and registers its slots
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
@@ -107,12 +110,12 @@ jobs:
             await ctx.plugin(ToolRuntime)
             await ctx.plugin(plugin, { maxDepth: 3, allowParallelInProgress: true })
             await ctx.fiber.await()
-            const schema = ctx.get('tools').schemas().find(s => s.name === 'todo_write')
-            if (!schema) throw new Error('todo_write was not registered')
+            const schema = ctx.get('tools').schemas().find(s => s.name === 'todo_tree_write')
+            if (!schema) throw new Error('todo_tree_write was not registered')
             const node = schema.parameters.properties.todos.items.properties
             if (!('children' in node)) throw new Error('the nested shape is missing')
             if (!('children' in node.children.items.properties)) throw new Error('depth-2 nesting is missing')
-            console.log('todo_write registered with nested children')
+            console.log('todo_tree_write registered with nested children')
           "
 
   # The Web rendering lives in the harness client packages (TodoPanel is internal
@@ -193,9 +196,8 @@ jobs:
         working-directory: dsh
         run: pnpm run lint
 
-      # The flat tool carries the reciprocal guard, the two client packages carry
-      # the tree rendering, and the generator spec counts both todo_write
-      # registrations.
+      # The generator spec counts this package's tool registration alongside the
+      # flat tool's.
       - name: Test the patched packages
         working-directory: dsh
         run: >

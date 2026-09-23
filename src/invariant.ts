@@ -58,10 +58,6 @@ function validateTodos(value: unknown, fail: InvariantFailure): void {
 
 /** What one session's committed log establishes about its todo events. */
 interface LogFacts {
-  /** Whether a `todo/tree` snapshot has been recorded. */
-  tree: boolean
-  /** Whether a flat `todo/write` snapshot has been recorded. */
-  flat: boolean
   /** The turn number currently open, or `null` between `turn/end` and the next `turn/start`. */
   openTurn: number | null
 }
@@ -82,8 +78,6 @@ type LogCache = WeakMap<Session, LogMark>
 
 /** Fold one event into a copy of `facts`. */
 function noteEvent(event: SessionEvent, facts: LogFacts): LogFacts {
-  if (event.type === 'todo/tree') return { ...facts, tree: true }
-  if (event.type === 'todo/write') return { ...facts, flat: true }
   if (event.type === 'turn/start') return { ...facts, openTurn: event.data.turn }
   if (event.type === 'turn/end') return { ...facts, openTurn: null }
   return facts
@@ -91,7 +85,7 @@ function noteEvent(event: SessionEvent, facts: LogFacts): LogFacts {
 
 /** Whether an event can change what this companion asserts — the only reason to run the checks. */
 function isTodoEvent(event: SessionEvent): boolean {
-  return event.type === 'todo/tree' || event.type === 'todo/write'
+  return event.type === 'todo/tree'
 }
 
 /**
@@ -105,7 +99,7 @@ function isTodoEvent(event: SessionEvent): boolean {
  * @returns what the committed log establishes.
  */
 function committedFacts(cache: LogCache, session: Session): LogFacts {
-  const mark = cache.get(session) ?? { tree: false, flat: false, openTurn: null, seq: 0 }
+  const mark = cache.get(session) ?? { openTurn: null, seq: 0 }
   const events = session.events
   let facts: LogFacts = mark
   for (const event of events.slice(mark.seq)) facts = noteEvent(event, facts)
@@ -114,26 +108,20 @@ function committedFacts(cache: LogCache, session: Session): LogFacts {
 }
 
 /**
- * Reject a log that carries both todo shapes, and a tree snapshot outside an open turn.
- *
- * SHAPE. The two todo packages select a shape by colliding on the `todo_write`
- * tool name, which the registry only enforces within one layer: a scoped
- * registration shadows a same-named global, and disposing that shadow returns
- * the agent to the other tool. `tool-todo-tree`'s `apply` refuses to mount
- * scoped, but the mirror composition (the flat tool mounted scoped over a
- * global tree) is not this package's to reject at load. This check is the
- * durable backstop: whichever registration path produced the mix, a session
- * log holding both event types is state no single-shape deployment can
- * produce, and consumers deriving the current todo state from it would
- * disagree about which shape is authoritative.
+ * Reject a tree snapshot outside an open turn.
  *
  * TURN ENCLOSURE. `dsh-session`'s companion requires the flat `todo/write` to
  * sit inside an open turn, but it deliberately ignores merge-extensible
  * variants, so `todo/tree` falls through its default and this package owns the
- * same rule for its own event. The rule holds because `todo_write` is the only
- * producer and it appends from `execute`, which the agent loop only reaches
+ * same rule for its own event. The rule holds because `todo_tree_write` is the
+ * only producer and it appends from `execute`, which the agent loop only reaches
  * inside a turn — so a snapshot outside one is a corrupted or hand-authored
  * history rather than anything the tool can write.
+ *
+ * COEXISTENCE. Nothing here constrains the flat `todo/write` shape. The two todo
+ * tools register distinct names, so a deployment may mount both and one session
+ * log may legitimately carry `todo/tree` and `todo/write` together; each shape
+ * is read back by the tool that wrote it.
  *
  * Only the COMMITTED log advances the cached state; `incoming` is tested and
  * discarded. It has to work that way because `session/event` dispatches before
@@ -149,11 +137,7 @@ function committedFacts(cache: LogCache, session: Session): LogFacts {
 function validateTodoRelations(cache: LogCache, session: Session, incoming: SessionEvent | undefined, fail: InvariantFailure): void {
   const committed = committedFacts(cache, session)
   if (incoming?.type === 'todo/tree' && committed.openTurn === null) {
-    fail('todo/tree appended outside any open turn; todo_write only appends from inside a turn')
-  }
-  const merged = incoming === undefined ? committed : noteEvent(incoming, committed)
-  if (merged.tree && merged.flat) {
-    fail('session log carries both todo/tree and todo/write; a deployment must mount exactly one todo tool')
+    fail('todo/tree appended outside any open turn; todo_tree_write only appends from inside a turn')
   }
 }
 
@@ -165,13 +149,13 @@ function validateEvent(event: SessionEvent, fail: InvariantFailure): void {
 
 /** Validate every whole-tree snapshot already present in one session's log. */
 function validateSession(cache: LogCache, session: Session, fail: InvariantFailure): void {
-  let facts: LogFacts = { tree: false, flat: false, openTurn: null }
+  let facts: LogFacts = { openTurn: null }
   for (const event of session.events) {
     validateEvent(event, fail)
     // Replay checks enclosure per event against the turn state at THAT position;
     // the incoming-event path cannot, since only the tail position is live there.
     if (event.type === 'todo/tree' && facts.openTurn === null) {
-      fail('todo/tree recorded outside any open turn; todo_write only appends from inside a turn')
+      fail('todo/tree recorded outside any open turn; todo_tree_write only appends from inside a turn')
     }
     facts = noteEvent(event, facts)
   }
@@ -190,8 +174,8 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     if (eventName !== 'session/event') return
     const [session, event] = args as [Session, SessionEvent]
     validateEvent(event, fail)
-    // Only a todo event can violate either relation, and every other event type
-    // is far more frequent (one per streamed assistant chunk).
+    // Only a `todo/tree` event can violate the remaining relation, and every
+    // other event type is far more frequent (one per streamed assistant chunk).
     if (isTodoEvent(event)) validateTodoRelations(facts, session, event, fail)
   }, { global: true })
 }, { inject: ['sessions'] })

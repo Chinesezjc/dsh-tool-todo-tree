@@ -18,13 +18,13 @@ index 005eb4aef9..448eed3d86 100644
 +    pkg: '@deepseek-ai/dsh-tool-todo-tree',
 +    dir: 'tool-todo-tree',
 +    source: 'packages/todo/tool-todo-tree/src/index.ts',
-+    requires: ['ctx.tools', 'owning Agent session', 'an unscoped context'],
++    requires: ['ctx.tools', 'owning Agent session'],
 +    writes: ['tool/call', 'todo/tree', 'tool/result'],
 +    async mount(ctx) {
 +      await ctx.plugin(ToolTodoTree, { allowParallelInProgress: true })
 +    },
 +    note:
-+      'The nested ALTERNATIVE to `@deepseek-ai/dsh-tool-todo`: both register `todo_write`, so a deployment mounts exactly one. Nesting is a literal expansion to `SCHEMA_DEPTH` (3) levels because the schema DSL has no recursion; `maxDepth` narrows what the tool accepts. Each call appends a whole-tree `todo/tree` snapshot (last-write-wins), and the tool refuses a scoped mount so shadowing cannot mix `todo/tree` and `todo/write` in one session log.',
++      'The nested counterpart of `@deepseek-ai/dsh-tool-todo`: it registers its own tool name (`todo_tree_write`), so both tools can be composed and the flat tool every shipped agent preset mounts cannot shadow it. Nesting is a literal expansion to `SCHEMA_DEPTH` (3) levels because the schema DSL has no recursion; `maxDepth` narrows what the tool accepts. Each call appends a whole-tree `todo/tree` snapshot (last-write-wins).',
 +  },
    {
      pkg: '@deepseek-ai/dsh-tool-workflow',

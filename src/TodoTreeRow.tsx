@@ -1,6 +1,7 @@
 /**
- * The `todo_write` tool row, registered on the keyed toolview slot at a lower
- * priority than the built-in flat row so it shadows it (lowest renders).
+ * The `todo_tree_write` tool row, registered on the keyed toolview slot under
+ * this package's own tool name, so it sits in its own cell and the built-in flat
+ * row is untouched.
  *
  * It reads the call's own `argsRaw` rather than the projection: a row belongs to
  * one call in the transcript, including calls that were rejected or superseded,
@@ -23,7 +24,7 @@ import type {} from './locales.ts'
  * slot runtime passes; the type edge is type-only, which is what the client
  * bundle allows for a non-platform package.
  */
-export type TodoTreeRowProps = PropsRuntime<'tool.call.toolview', 'todo_write'> & PropsLocale<'todoTree'>
+export type TodoTreeRowProps = PropsRuntime<'tool.call.toolview', 'todo_tree_write'> & PropsLocale<'todoTree'>
 
 /**
  * One-line summary of the tree a call wrote: completion counts over every depth,

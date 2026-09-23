@@ -1,7 +1,7 @@
 {
   "name": "dsh-tool-todo-tree",
-  "description": "Nested (tree-shaped) todo_write tool for DeepSeek Harness: the mutually-exclusive alternative to the flat dsh-tool-todo",
-  "version": "0.3.1",
+  "description": "Nested (tree-shaped) todo tool for DeepSeek Harness: registers todo_tree_write alongside the flat dsh-tool-todo",
+  "version": "0.4.0",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -40,7 +40,7 @@
     "prepare": "tsdown",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.client.json",
     "test": "vitest run",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+    "check": "pnpm run typecheck && pnpm run build && pnpm run test"
   },
   "dsh": {
     "bundle": {

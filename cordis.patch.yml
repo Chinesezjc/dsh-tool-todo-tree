@@ -1,23 +1,21 @@
-# dsh-tool-todo-tree bundle patch: mount the nested todo tool and disable the
-# flat one. Both register the tool name `todo_write`, so the registry rejects
-# whichever mounts second and its entry's fiber settles FAILED —
-# `assertEntriesActivated` audits that state and fails the boot. Selecting a
-# shape is therefore a composition decision, not a mount-order accident, so this
-# patch disables the flat entry in the same layer that inserts the nested one.
-
-# The flat tool ships in the base bundle under this id.
-- id: tool-todo
-  disabled: true
+# dsh-tool-todo-tree bundle patch: mount the nested todo tool.
+#
+# It registers its own tool name (`todo_tree_write`), so it never competes with
+# the flat `todo_write` the base bundle and every shipped agent preset mount.
+# Both tools can be composed and the flat row is left enabled on purpose: an
+# agent-scope preset row of the same name would shadow a host-scope registration,
+# which is exactly the trap a shared name creates. A deployment that wants the
+# nested shape INSTEAD of the flat list disables the flat row in its own overlay
+# (`- id: tool-todo` with `disabled: true`).
 
 # The row names THIS package, so Node resolution finds it through the profile's
 # node_modules. It is the unscoped published name, not the `@deepseek-ai/dsh-*`
 # name the same source carries inside the harness monorepo.
 #
 # `allowParallelInProgress` has no default: it is the same required deployment
-# choice the flat tool carries, so swapping the shapes cannot silently change it.
-# `true` matches what the harness base bundle configures for the flat tool, which
-# keeps this bundle a shape change and nothing else. Override it here to restore
-# the single-active discipline.
+# choice the flat tool carries. `true` matches what the harness base bundle
+# configures for the flat tool. Override it here to restore the single-active
+# discipline.
 - insert:
     - id: tool-todo-tree
       name: dsh-tool-todo-tree

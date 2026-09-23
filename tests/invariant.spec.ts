@@ -19,14 +19,14 @@ function event(todos: unknown): SessionEvent {
 /** `turn/start` payload: a tree snapshot is only legal inside an open turn. */
 const TURN_START = { turn: 1 } as const
 
-/** A store session inside an open turn — the state `todo_write` appends from. */
+/** A store session inside an open turn — the state `todo_tree_write` appends from. */
 function inTurn(ctx: Context, id: string): Session {
   const session = ctx.sessions.create(SessionId(id))
   session.append('turn/start', TURN_START)
   return session
 }
 
-/** A real Session inside an open turn — the only state `todo_write` can append from,
+/** A real Session inside an open turn — the only state `todo_tree_write` can append from,
  *  and what the companion's enclosure check requires. The companion reads
  *  `session.events`, so the turn must be on the log, not just implied. */
 function bare(id = 'bare'): Session {
@@ -156,25 +156,26 @@ describe('todo tree snapshot invariants', () => {
     })).toThrow(/outside any open turn/)
   })
 
-  it('rejects a session log that carries both todo shapes', async () => {
-    // A scoped registration shadows a same-named global instead of colliding
-    // with it, so a disposed shadow can return one agent to the other tool.
-    // Whichever path produced it, both shapes in one log is unresolvable state.
+  it('accepts one session log carrying both todo shapes', async () => {
+    // The two todo tools register distinct names, so a deployment may mount both
+    // and one session may call both. Each shape stays durable under its own event
+    // type, and no consumer has to pick an authoritative one.
     const ctx = await setup()
-    const session = inTurn(ctx, 'mixed')
+    const session = inTurn(ctx, 'both-shapes')
     session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
     expect(() => {
       session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
-    }).toThrow(/carries both todo\/tree and todo\/write/)
+    }).not.toThrow()
+    expect(session.events.map(e => e.type)).toEqual(['turn/start', 'todo/tree', 'todo/write'])
   })
 
-  it('rejects the mix in the other arrival order too', async () => {
+  it('accepts the mix in the other arrival order too', async () => {
     const ctx = await setup()
-    const session = inTurn(ctx, 'mixed-2')
+    const session = inTurn(ctx, 'both-shapes-2')
     session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
     expect(() => {
       session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
-    }).toThrow(/carries both todo\/tree and todo\/write/)
+    }).not.toThrow()
   })
 
   it('accepts a log carrying only the flat shape (the other tool owns its own checks)', async () => {
@@ -185,94 +186,83 @@ describe('todo tree snapshot invariants', () => {
     }).not.toThrow()
   })
 
-  it('does not let a rejected append poison the cached shape state', async () => {
-    // The rejected event never reaches the log, so recording its shape would make
-    // the NEXT tree append fail against a mix the log does not actually hold.
-    const ctx = await setup()
-    const session = inTurn(ctx, 'rejected-append')
-    session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
-    expect(() => {
-      session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
-    }).toThrow(/carries both todo\/tree and todo\/write/)
-    expect(() => {
-      session.append('todo/tree', { todos: [{ content: 'tree again', status: 'pending' }] })
-    }).not.toThrow()
-  })
-
-  it('keeps tracking shapes across appends of unrelated events', async () => {
-    // Non-todo events skip the check entirely (one per streamed assistant chunk),
-    // which must not lose the shape an earlier append recorded.
-    const ctx = await setup()
-    const session = inTurn(ctx, 'interleaved')
-    session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
-    session.append('turn/start', { turn: 1 })
-    expect(() => {
-      session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
-    }).toThrow(/carries both todo\/tree and todo\/write/)
-  })
-
   it('does not cache a candidate a later dispatch listener vetoes', async () => {
     // `session/event` dispatches BEFORE the log push, so a listener ordered
-    // after this companion can still veto the append. Caching the candidate
-    // would reject the next legal append against an event the log never got.
+    // after this companion can still veto the append. The vetoed event never
+    // reaches the log, and nothing may be judged against it afterwards.
     const ctx = await setup()
     ctx.on('internal/dispatch', (_mode, eventName, args) => {
       if (eventName !== 'session/event') return
       const [, event] = args as [Session, SessionEvent]
-      if (event.type === 'todo/write') throw new Error('vetoed by another plugin')
+      if (event.type === 'todo/tree') throw new Error('vetoed by another plugin')
     }, { global: true })
     const session = inTurn(ctx, 'vetoed')
     expect(() => {
-      session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
+      session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
     }).toThrow(/vetoed by another plugin/)
     // Only the turn/start that opened the turn: the vetoed event never landed.
     expect(session.events.map(e => e.type)).toEqual(['turn/start'])
-    expect(() => {
-      session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
-    }).not.toThrow()
   })
 
   it('folds in events appended while the session was detached from the store', async () => {
     // A detached session emits no dispatch, but its log still grows. Reusing a
-    // stale cache entry on re-announcement would accept the mix it gained.
+    // stale cache entry on re-announcement would judge the next append against a
+    // turn state the log no longer holds.
     const ctx = await setup()
     const session = ctx.sessions.prepare(SessionId('reentered'))
     const detach = ctx.sessions.enter(session)
     ctx.sessions.announce(session)
     session.append('turn/start', TURN_START)
-    session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
     detach()
-    session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
 
     ctx.sessions.enter(session)
-    expect(() => { ctx.sessions.announce(session) }).toThrow(/carries both todo\/tree and todo\/write/)
+    ctx.sessions.announce(session)
+    expect(() => {
+      session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
+    }).toThrow(/outside any open turn/)
   })
 
-  it('rejects a resumed session seeded with both shapes', async () => {
+  it('accepts a resumed session seeded with both shapes', async () => {
     const ctx = await setup()
-    expect(() => ctx.sessions.create(SessionId('seeded-mix'), {
+    expect(() => ctx.sessions.create(SessionId('seeded-both'), {
       seed: [
         { type: 'turn/start', seq: 0, time: 0, data: TURN_START },
         { ...event([{ content: 'tree', status: 'pending' }]), seq: 1 },
         { type: 'todo/write', seq: 2, time: 0, data: { todos: [{ content: 'flat', status: 'pending' }] } },
       ],
-    })).toThrow(/carries both todo\/tree and todo\/write/)
+    })).not.toThrow()
   })
 
-  it('rejects an existing mixed log on late registration', async () => {
+  it('accepts an existing mixed log on late registration', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     const session = ctx.sessions.create()
     session.append('turn/start', TURN_START)
     session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
     // An unrelated event between the two: the registration-time scan reads the
-    // whole log, so it must skip a non-todo event rather than misread its shape.
+    // whole log, so it must skip a non-todo event rather than misread the log.
     session.append('turn/start', { turn: 1 })
     session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
     await ctx.plugin(InvariantService, { enabled: true })
 
+    await expect(ctx.plugin(TodoTreeInvariant).then(() => undefined)).resolves.toBeUndefined()
+  })
+
+  it('rejects an existing snapshot whose turn had already closed, on late registration', async () => {
+    // The registration-time replay folds turn state, not only event shapes: the
+    // snapshot below was appended with no companion loaded, so only this scan can
+    // reject it.
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const session = ctx.sessions.create()
+    session.append('turn/start', TURN_START)
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
+    await ctx.plugin(InvariantService, { enabled: true })
+
     await expect(ctx.plugin(TodoTreeInvariant).then(() => undefined))
-      .rejects.toThrow(/carries both todo\/tree and todo\/write/)
+      .rejects.toThrow(/outside any open turn/)
   })
 
   it('rejects an invalid existing snapshot on late registration', async () => {
