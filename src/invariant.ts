@@ -91,16 +91,16 @@ function isTodoEvent(event: SessionEvent): boolean {
 /**
  * Fold every committed event past the cached watermark and store the result.
  *
- * Reads `session.events`, the authoritative committed log, so it is correct
- * whether the gap is one ordinary append or a batch that arrived while the
- * session was detached.
+ * Reads the committed session log, so it is correct whether the gap is one
+ * ordinary append or a batch that arrived while the session was detached.
  * @param cache - accumulated per-session watermarks.
  * @param session - the session whose committed log is folded.
  * @returns what the committed log establishes.
  */
 function committedFacts(cache: LogCache, session: Session): LogFacts {
   const mark = cache.get(session) ?? { openTurn: null, seq: 0 }
-  const events = session.events
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+  const events = session.snapshotEvents()
   let facts: LogFacts = mark
   for (const event of events.slice(mark.seq)) facts = noteEvent(event, facts)
   cache.set(session, { ...facts, seq: events.length })
@@ -150,7 +150,8 @@ function validateEvent(event: SessionEvent, fail: InvariantFailure): void {
 /** Validate every whole-tree snapshot already present in one session's log. */
 function validateSession(cache: LogCache, session: Session, fail: InvariantFailure): void {
   let facts: LogFacts = { openTurn: null }
-  for (const event of session.events) {
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
+  for (const event of session.snapshotEvents()) {
     validateEvent(event, fail)
     // Replay checks enclosure per event against the turn state at THAT position;
     // the incoming-event path cannot, since only the tail position is live there.

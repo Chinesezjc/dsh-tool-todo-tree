@@ -9,6 +9,12 @@ export default defineConfig({
       { find: /^@deepseek-ai\/dsh-tool-todo-tree\/invariant$/, replacement: new URL('src/invariant.ts', import.meta.url).pathname },
       { find: /^@deepseek-ai\/dsh-tool-todo-tree\/types$/, replacement: new URL('src/types.ts', import.meta.url).pathname },
       { find: /^@deepseek-ai\/dsh-tool-todo-tree\/client$/, replacement: new URL('src/client.tsx', import.meta.url).pathname },
+      // `ui-primitives` is a browser platform module: the shell provides it, and
+      // in Node its own import chain (clsx, katex, shiki, micromark, …) would
+      // have to be installed just to render a component under test. The double
+      // exports both icon generations, so the tests still exercise the lookup the
+      // browser half performs.
+      { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: new URL('tests/ui-primitives-stub.tsx', import.meta.url).pathname },
       // `ui-primitives` imports katex's plain stylesheet for its math renderer.
       // Node cannot load a `.css` specifier, and nothing under test reads those
       // styles, so the import resolves to an empty module.

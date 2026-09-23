@@ -37,6 +37,10 @@ declare module '@deepseek-ai/dsh-session/types' {
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionStateMap {
+    /** Host-side state of the tree fold: the latest whole tree, or `null` before the first write. */
+    todoTree: TodoTreeItem[] | null
+  }
   interface SessionProjectionMap {
     /**
      * The agent's current whole todo tree (the latest `todo/tree` snapshot),
@@ -46,8 +50,9 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
      * A key of its own rather than the flat tool's `todos`: the two payload
      * types differ (`children` is absent from `TodoItem`), and a deployment
      * mounting the flat tool must not have its `todos` consumers handed a
-     * nested value they cannot render. Exactly one of the two keys exists in
-     * any composition, because exactly one todo tool mounts.
+     * nested value they cannot render. Both keys can exist in one composition
+     * now that the two tools register distinct names; each carries its own
+     * shape and its own fold.
      */
     todoTree: TodoTreeItem[] | null
   }

@@ -6,7 +6,7 @@
  * identities, and the difference is not cosmetic:
  *
  * - Published: unscoped `dsh-tool-todo-tree`, peers resolved from the registry
- *   at `^0.1.0-rc.6`, built by tsdown into `lib/*.js`.
+ *   on the current train, built by tsdown into `lib/*.js`.
  * - In-tree: scoped `@deepseek-ai/dsh-tool-todo-tree`, peers as `workspace:^`,
  *   built by the harness's own `tsc -b` into `lib/types/`.
  *
@@ -72,11 +72,14 @@ for (const browserOnly of [
   'src/client.tsx',
   'src/TodoTreePanel.tsx',
   'src/TodoTreeRow.tsx',
+  'src/icons.ts',
   'src/plan.ts',
   'src/locales.ts',
   'src/todo-tree.module.css',
   'src/css-modules.d.ts',
   'tests/client.spec.tsx',
+  'tests/icons.spec.ts',
+  'tests/ui-primitives-stub.tsx',
   'tests/empty-style.ts',
   // Asserts the contract of THIS repo's built `lib/client.js`. The harness never
   // builds the browser half, so that artifact does not exist in-tree.
@@ -99,7 +102,7 @@ const published = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
 await writeFile(join(target, 'package.json'), `${JSON.stringify({
   name: '@deepseek-ai/dsh-tool-todo-tree',
   description: published.description,
-  version: '0.1.0-rc.6',
+  version: '0.1.7-alpha.2',
   private: true,
   type: 'module',
   main: 'lib/index.js',

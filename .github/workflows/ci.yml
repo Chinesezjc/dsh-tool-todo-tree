@@ -44,7 +44,9 @@ jobs:
       - name: Pack and install into a profile
         run: |
           pnpm pack --pack-destination "$RUNNER_TEMP"
-          npm install -g @deepseek-ai/dsh@0.1.0-rc.6
+          # The published `latest` train — the harness a user gets from
+          # `npm install -g @deepseek-ai/dsh`. The plugin targets this API.
+          npm install -g @deepseek-ai/dsh@0.1.5-rc.3
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
           dsh plugin --profile ci add "$RUNNER_TEMP"/dsh-tool-todo-tree-*.tgz
           node -e "

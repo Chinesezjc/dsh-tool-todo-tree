@@ -67,14 +67,14 @@ describe('tree todo_tree_write tool through the agent loop', () => {
       textResponse('Plan recorded.'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('it-todo-tree'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('it-todo-tree'), { provider: 'mock', model: 'mock' })
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'plan a nested task' }], source: { kind: 'user' } }))
     await waitForIdle(ctx, agent)
 
-    const log = agent.session.events
+    const log = agent.session.snapshotEvents()
     expect(findEvent(log, 'tool/call').data.name).toBe('todo_tree_write')
-    expect(findEvent(log, 'tool/result').data.message.content[0].isError).toBe(false)
+    expect(findEvent(log, 'tool/result').data.message.isError).toBe(false)
 
     const todoEvent = findEvent(log, 'todo/tree')
     expect(todoEvent.data.todos).toEqual([
@@ -106,14 +106,14 @@ describe('tree todo_tree_write tool through the agent loop', () => {
       textResponse('Done planning.'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('it-todo-tree-2'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('it-todo-tree-2'), { provider: 'mock', model: 'mock' })
 
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'plan then update' }], source: { kind: 'user' } }))
     await waitForIdle(ctx, agent)
 
-    const todoEvents = agent.session.events.filter(e => e.type === 'todo/tree')
+    const todoEvents = agent.session.snapshotEvents().filter(e => e.type === 'todo/tree')
     expect(todoEvents).toHaveLength(2)
-    expect(findEvent(agent.session.events, 'todo/tree', 'last').data.todos).toEqual([
+    expect(findEvent(agent.session.snapshotEvents(), 'todo/tree', 'last').data.todos).toEqual([
       {
         content: 'step one',
         status: 'completed',
@@ -142,18 +142,18 @@ describe('tree todo_tree_write tool through the agent loop', () => {
       textResponse('Done.'),
     ])
     const ctx = await harness(adapter)
-    const agent = ctx.agentLoop.create(SessionId('it-both-shapes'), { provider: 'mock', model: 'mock' })
+    const agent = await ctx.agentLoop.create(SessionId('it-both-shapes'), { provider: 'mock', model: 'mock' })
     // Exactly what a shipped preset does: mount the flat tool inside the agent's
     // own scope, over this package's host-scope tree tool.
     await agent.ctx.plugin(ToolTodo, { allowParallelInProgress: true })
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'plan' }], source: { kind: 'user' } }))
     await waitForIdle(ctx, agent)
 
-    const log = agent.session.events
+    const log = agent.session.snapshotEvents()
     expect(log.filter(e => e.type === 'todo/tree')).toHaveLength(2)
     expect(log.filter(e => e.type === 'todo/write')).toHaveLength(1)
     // Every call reached its own tool: no refusal, no shadowing.
-    expect(log.filter(e => e.type === 'tool/result').map(e => e.data.message.content[0]?.isError))
+    expect(log.filter(e => e.type === 'tool/result').map(e => e.data.message.isError))
       .toEqual([false, false, false])
   })
 })

@@ -12,10 +12,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as ToolTodoTree from '@deepseek-ai/dsh-tool-todo-tree'
@@ -35,7 +36,7 @@ function agent(ctx: Context): Agent {
   const id = SessionId('todo-tree-loader-agent')
   const session = Session.create(id)
   const value: Agent = {
-    id, options: {}, session, inbox: new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} }),
+    id, options: {}, session, inbox: unsupportedInbox(),
     status: 'idle', ctx: scope.ctx,
     followup: () => {}, steer: () => {}, inject: () => {}, send: () => {}, cancel() {},
     runMaintenance: task => task(new AbortController().signal),
@@ -86,6 +87,10 @@ async function boot(configLines: readonly string[]): Promise<Context> {
   } as unknown as NonNullable<typeof ctx.loader.internal>
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
+  // A throwing `apply` rejects its own entry fiber; `loader.await()` alone does
+  // not surface that, so a load-time config failure would otherwise resolve as a
+  // successful boot.
+  for (const entry of ctx.loader.entries()) await entry.fiber?.await()
   return ctx
 }
 
@@ -106,7 +111,7 @@ const DEPTH_2 = [{
 function execute(ctx: Context, owner: Agent, todos: unknown, callId: string) {
   return ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: CallId(callId),
+    callId: ToolCallId(callId),
     name: 'todo_tree_write',
     arguments: { todos },
     agent: owner,
@@ -128,7 +133,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     expect(result.isError).toBe(true)
     expect(resultText(result)).toContain('maximum depth of 1')
     // A rejected call writes nothing.
-    expect(owner.session.events.some(e => e.type === 'todo/tree')).toBe(false)
+    expect(owner.session.snapshotEvents().some(e => e.type === 'todo/tree')).toBe(false)
   }, 30_000)
 
   it('maxDepth: 3 accepts the same nested write end to end', async () => {
@@ -136,7 +141,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     const owner = agent(ctx)
     const result = await execute(ctx, owner, DEPTH_2, 'nested-ok')
     expect(result.isError).toBe(false)
-    expect(owner.session.events.findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(DEPTH_2)
+    expect(owner.session.snapshotEvents().findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(DEPTH_2)
   }, 30_000)
 
   it('defaults to the schema depth when the config omits maxDepth', async () => {
@@ -150,7 +155,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     }]
     const result = await execute(ctx, owner, depth3, 'default-depth')
     expect(result.isError).toBe(false)
-    expect(owner.session.events.findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(depth3)
+    expect(owner.session.snapshotEvents().findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(depth3)
   }, 30_000)
 
   it('a maxDepth past the advertised schema fails the entry at load', async () => {
@@ -170,7 +175,7 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     const result = await execute(ctx, owner, PARALLEL_TREE, 'parallel-denied')
     expect(result.isError).toBe(true)
     expect(resultText(result)).toContain('at most one task may be in_progress')
-    expect(owner.session.events.some(e => e.type === 'todo/tree')).toBe(false)
+    expect(owner.session.snapshotEvents().some(e => e.type === 'todo/tree')).toBe(false)
   }, 30_000)
 
   it('allowParallelInProgress: true permits in_progress nodes at several depths', async () => {
@@ -183,6 +188,6 @@ describe('tool-todo-tree real Loader composition through cordis.yml', () => {
     const owner = agent(ctx)
     const result = await execute(ctx, owner, PARALLEL_TREE, 'parallel-allowed')
     expect(result.isError).toBe(false)
-    expect(owner.session.events.findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(PARALLEL_TREE)
+    expect(owner.session.snapshotEvents().findLast(e => e.type === 'todo/tree')?.data.todos).toEqual(PARALLEL_TREE)
   }, 30_000)
 })

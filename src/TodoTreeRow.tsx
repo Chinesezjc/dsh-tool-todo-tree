@@ -8,7 +8,7 @@
  * and the projection only carries the latest accepted tree.
  * @module
  */
-import { IconChecklistOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { ChecklistIcon } from './icons.ts'
 import { rowsFromArgs, summarize } from './plan.ts'
 import css from './todo-tree.module.css'
 
@@ -41,7 +41,7 @@ export function TodoTreeRow({ block, t }: TodoTreeRowProps) {
 
   return (
     <div className={css.row} data-testid="todo-tree-row">
-      <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
+      <span className={css.lead} aria-hidden><ChecklistIcon /></span>
       <span className={css.title}>{t('row.title')}</span>
       <span className={css.progress}>
         {head}

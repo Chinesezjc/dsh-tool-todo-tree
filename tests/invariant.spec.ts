@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore, { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as TodoTreeInvariant from '@deepseek-ai/dsh-tool-todo-tree/invariant'
 import InvariantService from '@deepseek-ai/dsh-invariants'
 
@@ -13,7 +13,7 @@ async function setup(): Promise<Context> {
 }
 
 function event(todos: unknown): SessionEvent {
-  return { type: 'todo/tree', seq: 0, time: 0, data: { todos } } as SessionEvent
+  return { type: 'todo/tree', seq: SessionSeq(0), time: 0, data: { todos } } as SessionEvent
 }
 
 /** `turn/start` payload: a tree snapshot is only legal inside an open turn. */
@@ -85,7 +85,7 @@ describe('todo tree snapshot invariants', () => {
     expect(() => {
       ctx.emit('tools/change')
       ctx.emit('session/event', bare(), {
-        type: 'turn/start', seq: 0, time: 0, data: { turn: 1 },
+        type: 'turn/start', seq: SessionSeq(0), time: 0, data: { turn: 1 },
       })
     }).not.toThrow()
   })
@@ -108,10 +108,10 @@ describe('todo tree snapshot invariants', () => {
     const ctx = await setup()
     expect(() => ctx.sessions.create(SessionId('clean'), {
       seed: [
-        { type: 'turn/start', seq: 0, time: 0, data: TURN_START },
+        { type: 'turn/start', seq: SessionSeq(0), time: 0, data: TURN_START },
         { ...event([
           { content: 'parent', status: 'in_progress', children: [{ content: 'child', status: 'pending' }] },
-        ]), seq: 1 },
+        ]), seq: SessionSeq(1) },
       ],
     })).not.toThrow()
   })
@@ -166,7 +166,7 @@ describe('todo tree snapshot invariants', () => {
     expect(() => {
       session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
     }).not.toThrow()
-    expect(session.events.map(e => e.type)).toEqual(['turn/start', 'todo/tree', 'todo/write'])
+    expect(session.snapshotEvents().map(e => e.type)).toEqual(['turn/start', 'todo/tree', 'todo/write'])
   })
 
   it('accepts the mix in the other arrival order too', async () => {
@@ -201,7 +201,7 @@ describe('todo tree snapshot invariants', () => {
       session.append('todo/tree', { todos: [{ content: 'tree', status: 'pending' }] })
     }).toThrow(/vetoed by another plugin/)
     // Only the turn/start that opened the turn: the vetoed event never landed.
-    expect(session.events.map(e => e.type)).toEqual(['turn/start'])
+    expect(session.snapshotEvents().map(e => e.type)).toEqual(['turn/start'])
   })
 
   it('folds in events appended while the session was detached from the store', async () => {
@@ -227,9 +227,9 @@ describe('todo tree snapshot invariants', () => {
     const ctx = await setup()
     expect(() => ctx.sessions.create(SessionId('seeded-both'), {
       seed: [
-        { type: 'turn/start', seq: 0, time: 0, data: TURN_START },
-        { ...event([{ content: 'tree', status: 'pending' }]), seq: 1 },
-        { type: 'todo/write', seq: 2, time: 0, data: { todos: [{ content: 'flat', status: 'pending' }] } },
+        { type: 'turn/start', seq: SessionSeq(0), time: 0, data: TURN_START },
+        { ...event([{ content: 'tree', status: 'pending' }]), seq: SessionSeq(1) },
+        { type: 'todo/write', seq: SessionSeq(2), time: 0, data: { todos: [{ content: 'flat', status: 'pending' }] } },
       ],
     })).not.toThrow()
   })

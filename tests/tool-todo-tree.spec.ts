@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRegistry from '@deepseek-ai/dsh-tools'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { type Agent } from '@deepseek-ai/dsh-agent'
 import { createScope } from '@deepseek-ai/dsh-scope'
@@ -44,7 +45,7 @@ function callTodo(ctx: Context, args: unknown, over: { agent?: Agent | undefined
   const agent = 'agent' in over ? over.agent : agentWithSession()
   return ctx.tools.execute({
     signal: testToolSignal,
-    callId: CallId(`call-${++callCounter}`),
+    callId: ToolCallId(`call-${++callCounter}`),
     name: 'todo_tree_write',
     arguments: args,
     ...agent ? { agent } : {},
@@ -104,7 +105,7 @@ describe('dsh-tool-todo-tree', () => {
     })
     expect(text(result)).toContain('2 pending, 1 in progress, 1 completed')
 
-    const event = agent.session.events.findLast(e => e.type === 'todo/tree')!
+    const event = agent.session.snapshotEvents().findLast(e => e.type === 'todo/tree')!
     expect(event.data.todos).toEqual(todos)
   })
 
@@ -116,7 +117,7 @@ describe('dsh-tool-todo-tree', () => {
     ] }, { agent })
     expect(result.isError).toBe(false)
 
-    const event = agent.session.events.findLast(e => e.type === 'todo/tree')!
+    const event = agent.session.snapshotEvents().findLast(e => e.type === 'todo/tree')!
     expect(event.data.todos).toEqual([{ content: 'plan the work', status: 'pending' }])
   })
 
@@ -129,7 +130,7 @@ describe('dsh-tool-todo-tree', () => {
     ] }, { agent })
     expect(result.isError).toBe(false)
 
-    const event = agent.session.events.findLast(e => e.type === 'todo/tree')!
+    const event = agent.session.snapshotEvents().findLast(e => e.type === 'todo/tree')!
     expect(event.data.todos).toEqual([
       { content: 'a', status: 'pending', children: [
         { content: 'b', status: 'pending', children: [{ content: 'c', status: 'pending' }] },
@@ -160,7 +161,7 @@ describe('dsh-tool-todo-tree', () => {
     agent.session.append('todo/write', { todos: [{ content: 'flat', status: 'pending' }] })
     const result = await callTodo(ctx, { todos: [{ content: 'tree', status: 'pending' }] }, { agent })
     expect(result.isError).toBe(false)
-    expect(agent.session.events.map(e => e.type)).toEqual(['todo/write', 'todo/tree'])
+    expect(agent.session.snapshotEvents().map(e => e.type)).toEqual(['todo/write', 'todo/tree'])
   })
 
   it('replaces the tree on a second call (last-write-wins on the log)', async () => {
@@ -172,7 +173,7 @@ describe('dsh-tool-todo-tree', () => {
       { content: 'b', status: 'in_progress' },
     ] }, { agent })
 
-    const current = agent.session.events.findLast(e => e.type === 'todo/tree')!.data.todos
+    const current = agent.session.snapshotEvents().findLast(e => e.type === 'todo/tree')!.data.todos
     expect(current).toEqual([
       { content: 'a', status: 'completed', children: [{ content: 'a.1', status: 'completed' }] },
       { content: 'b', status: 'in_progress' },
@@ -291,6 +292,9 @@ describe('dsh-tool-todo-tree', () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolRegistry)
+    // The flat tool injects `sessionProjections`; without that seam its apply
+    // never runs and the coexistence assertion would pass vacuously.
+    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(ToolTodo, { allowParallelInProgress: true })
     await ctx.plugin(tool, { allowParallelInProgress: true })
     const names = ctx.tools.schemas().map(s => s.name)

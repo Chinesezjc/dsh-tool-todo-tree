@@ -5,11 +5,7 @@
  * @module
  */
 import { useState } from 'react'
-import {
-  IconChecklistOutline14,
-  IconChevronDownOutline14,
-  IconChevronUpOutline14,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import { ChecklistIcon, ChevronDownIcon, ChevronUpIcon } from './icons.ts'
 import type { PlanRow } from './plan.ts'
 import { planRows, summarize, type PlanNodeLike } from './plan.ts'
 import css from './todo-tree.module.css'
@@ -86,11 +82,11 @@ export function TodoTreePanel({ todos, t }: TodoTreePanelProps) {
           aria-expanded={!collapsed}
           onClick={() => { setCollapsed(value => !value) }}
         >
-          <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
+          <span className={css.lead} aria-hidden><ChecklistIcon /></span>
           <span className={css.title}>{t('panel.title')}</span>
           <span className={css.progress}>{progressLabel(rows, t)}</span>
           <span className={css.chevron} aria-hidden>
-            {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
+            {collapsed ? <ChevronUpIcon /> : <ChevronDownIcon />}
           </span>
         </button>
         {!collapsed && (

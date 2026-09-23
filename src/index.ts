@@ -298,14 +298,16 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['sessionProjections'], (projectionCtx) => {
     projectionCtx.sessionProjections.register<'todoTree', TodoTreeItem[] | null>({
       key: 'todoTree',
-      schema: todoTreeProjectionSchema,
+      stateSchema: todoTreeProjectionSchema,
       init: () => null,
       apply: (state, event) => {
         if (event.type === 'todo/tree') return event.data.todos
         if (event.type === 'turn/start') return null
         return state
       },
-      view: state => state,
+      // The wire half is what carries the tree to the browser: without it the
+      // unit is host-only and the plan strip reads nothing.
+      wire: { viewSchema: todoTreeProjectionSchema, view: state => state },
       stateVersion: 1,
     })
   })

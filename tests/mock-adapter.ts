@@ -9,7 +9,7 @@
  * to the agent-loop's own suites.
  */
 import type { GenerateOptions, LlmModelReasoningInfo, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { CallId, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, ToolCallId } from '@deepseek-ai/dsh-llm'
 
 /** One scripted assistant turn that only emits text. */
 export function textResponse(text: string): StreamChunk[] {
@@ -33,7 +33,7 @@ export function textResponse(text: string): StreamChunk[] {
  * @returns the chunk sequence for one turn.
  */
 export function toolCallResponse(rawCallId: string, name: string, args: object, text?: string): StreamChunk[] {
-  const callId = CallId(rawCallId)
+  const callId = ToolCallId(rawCallId)
   const argumentsJson = JSON.stringify(args)
   const chunks: StreamChunk[] = []
   let index = 0

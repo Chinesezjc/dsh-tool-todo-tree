@@ -7,7 +7,7 @@ allowBuilds:
   unrs-resolver: true
 
 # Every dependency is a first-party @deepseek-ai package pinned to one release
-# train (0.1.0-rc.6). The cooldown exists to slow adoption of freshly published
+# train. The cooldown exists to slow adoption of freshly published
 # third-party versions; here it only blocks the pinned set, so it is disabled
 # rather than tracked as an ever-growing allowlist.
 minimumReleaseAge: 0
