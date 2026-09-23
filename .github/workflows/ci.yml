@@ -124,10 +124,18 @@ jobs:
   patches:
     runs-on: ubuntu-latest
     steps:
+      # Pinned to the harness revision the patches were written against. The
+      # patches edit files that name every shipped tool, so an unpinned checkout
+      # would turn this lane red on unrelated harness commits. Moving the pin is
+      # the sync step: check out the new revision in a worktree, run
+      # `node scripts/assemble-into-harness.mjs <worktree>`, re-apply the three
+      # edits, regenerate the patches with `git diff -- <file>`, and update the
+      # ref below.
       - name: Checkout DeepSeek Harness
         uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
+          ref: 63e6726f84695b4ba0635888b6ad6deb65f753e4
           path: dsh
 
       - name: Checkout plugin

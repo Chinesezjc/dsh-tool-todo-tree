@@ -114,7 +114,7 @@ npm 上 `@deepseek-ai/dsh-*` 的 `dist-tags.latest` 多数仍指向旧的 `0.0.1
 
 ## 已知缺口
 
-- **`patches` job 目前对不上当前 master**：`patches/*.patch` 写在 harness `2026-08-17` 前后的修订上，今天用 `origin/master` 的文件 `git apply --check` 三个都报 `patch failed`。它不影响本包的可用性（路线 B 不需要任何 harness 侧改动），但这条 CI lane 需要重新派生或连同 `scripts/assemble-into-harness.mjs` 一起退役。`tool-todo-reciprocal-guard.patch` 已删除：扁平工具不再需要拒绝覆盖 `todo/tree`，那是互斥时代的守卫。
+- **`patches` lane 钉在一个 harness 修订上**：三个 patch 编辑的文件逐个列出 harness 已发布的工具名，因此 job 的 checkout 钉在 `63e6726f846`（2026-09-23 master），否则任何新增工具的 harness 提交都会让它变红。**同步步骤**：在目标修订上起一个 worktree → `node scripts/assemble-into-harness.mjs <worktree>` → 重新施加三处改动（根 `package.json` 的 workspace devDependency、`scripts/gen-tool-catalog.ts` 的 import 与 catalog 条目、`packages/core/tools/tests/gen-tool-catalog.spec.ts` 的期望工具名列表）→ `git diff -- <file>` 覆盖 `patches/` 三个文件 → 更新 ci.yml 里的 `ref:`。`tool-todo-reciprocal-guard.patch` 已删除：扁平工具不再需要拒绝覆盖 `todo/tree`，那是互斥时代的守卫。
 - **计划条只缩进、不可折叠**：按深度缩进各行，没有按节点折叠，较宽的树依赖计划条自身滚动。
 - **`mock-adapter.ts` 是复制来的**：harness 把它放在 `packages/core/agent-loop/tests/`，已发布包只含 `lib/`，任何发布产物都不暴露它，因此独立套件自带一份精简版。
 - **浏览器半边没有自动化渲染测试**：`tests/client.spec.tsx` 覆盖计划推导、行与计划条的渲染、以及 `apply` 注册出的槽位；真实页面里的计算样式是人工回读的（见上文），没有进 CI。
