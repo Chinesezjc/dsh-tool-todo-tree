@@ -135,7 +135,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
-          ref: 63e6726f84695b4ba0635888b6ad6deb65f753e4
+          ref: 00102833dfaee1da9f48a3a8eae9d34005a75218
           path: dsh
 
       - name: Checkout plugin
