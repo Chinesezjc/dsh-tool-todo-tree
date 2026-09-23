@@ -16,6 +16,8 @@ dsh plugin --profile <名字> add dsh-tool-todo-tree
 
 registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在 git 安装时触发）。也可以从本地 tarball（`pnpm pack`）或 git ref（`github:Chinesezjc/dsh-tool-todo-tree#<sha>`，pnpm 会跑 `prepare`，需在 profile 的 `pnpm-workspace.yaml` 放行）安装。
 
+> **刚发布的新版本暂时不会被裸 `add` 解析到**：pnpm 11 默认给新发布的版本一个冷却窗口（本机 11.7.0 实测：0.4.0 发布 1 小时、0.5.0 发布 20 分钟时，`dsh plugin add dsh-tool-todo-tree` 仍解析到 0.3.1；把 `minimumReleaseAge: 0` 写进 `pnpm-workspace.yaml` 后立刻解析到 0.5.0）。要立刻拿到指定版本就用显式版本号——`dsh plugin --profile <名字> add dsh-tool-todo-tree@0.5.0`，pnpm 会自己在 profile 的 `pnpm-workspace.yaml` 里补一条 `minimumReleaseAgeExclude`；否则等窗口过去再装。
+
 `dsh plugin add` 会把包写进 profile 依赖，并把 `cordis.patch.yml` 注册为一层 bundle。该层只插入树形工具，**不动扁平工具**：
 
 ```yaml
