@@ -102,7 +102,7 @@ registry 上的 tarball 自带 `lib/`，安装时不跑构建（`prepare` 只在
 
 **模型可见的工具面（mock 模型，真实 agent loop）**：`tests/integration.spec.ts` 里按 preset 的方式在 agent scope 挂扁平工具、本包在 host scope，模型依次调用 `todo_tree_write`、`todo_write`、`todo_tree_write`：三次 `tool/result` 全部 `isError: false`，日志得到 2 条 `todo/tree` + 1 条 `todo/write`。这就是「装了就能用」的判据。
 
-**真实安装链路（0.5.0，harness 0.1.6-alpha.1）**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；`--dump-config` 里 `- id: tool-todo` 保持启用、`- id: tool-todo-tree` 已插入；随后起 web 实例，启动日志 0 条 error，首页 boot graph 里出现 `dsh-tool-todo-tree/client.js`。
+**真实安装链路（0.5.0）**：`pnpm pack` → `dsh plugin --profile ttdemo add ./*.tgz` 成功；随后起 web 实例，启动日志 0 条 error，首页 boot graph 里出现 `dsh-tool-todo-tree/client.js`。CI 的 `standalone` job 用**发布版** `@deepseek-ai/dsh@0.1.5-rc.3` 把这条链路整个跑一遍：装包 → 组合前后 `--dump-config` diff **只多出本包那一行**（不给部署禁用扁平行）→ boot 并用 `curl` 确认浏览器半边进了首页 boot graph。
 
 **活 harness 探针**：把构建出的 `lib/` 挂到运行中的 checkout 上，包一层 `sessionProjections.register` 抓取插件真正传入的定义对象，确认 `stateSchema`/`wire` 都在（见上文「版本与兼容」的对照输出）。
 
